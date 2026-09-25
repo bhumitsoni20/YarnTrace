@@ -39,8 +39,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "Inter", "system-ui", "sans-serif"],
-        display: ["var(--font-plus-jakarta)", "Plus Jakarta Sans", "sans-serif"],
+        sans: ["var(--font-dm-sans)", "DM Sans", "system-ui", "sans-serif"],
+        display: ["var(--font-outfit)", "Outfit", "sans-serif"],
       },
       boxShadow: {
         card: "0 1px 2px 0 rgba(15, 23, 42, 0.04)",
