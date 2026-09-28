@@ -42,11 +42,14 @@ enum LotStatus {
 }
 
 enum TransactionType {
-  RECEIVED
   OPENING
+  RECEIVED
   ISSUED
+  RETURN
   RETURNED
   RETIRED
+  SOLD
+  CORRECTION
   ADJUSTMENT
   TRANSFER
 }
@@ -133,6 +136,7 @@ model User {
 
   userPermissions UserPermission[]
   auditLogs       AuditLog[]
+  transactions    Transaction[]   @relation("UserTransactions")
 
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -228,15 +232,22 @@ model Yarn {
 model Lot {
   id             String    @id @default(uuid())
   lotNumber      String    @unique
-  yarnId         String
-  yarn           Yarn      @relation(fields: [yarnId], references: [id])
+  yarnId         String?
+  yarn           Yarn?     @relation(fields: [yarnId], references: [id])
+  yarnCount      String?   // Yarn count text e.g. "1/10 KW"
   supplierId     String?
   supplier       Party?    @relation("SupplierLots", fields: [supplierId], references: [id])
   
+  // Dyeing Parent/Child Lot lineage
+  parentLotId    String?
+  parentLot      Lot?      @relation("DyeingLotLineage", fields: [parentLotId], references: [id])
+  childLots      Lot[]     @relation("DyeingLotLineage")
+  
   initialBags    Int       @default(0)
   initialCones   Int       @default(0)
-  initialWeightKg Decimal  @db.Decimal(12, 4) // Initial received/opening net KG
-  currentWeightKg Decimal  @db.Decimal(12, 4) // Aggregated current KG across locations
+  initialWeightKg Decimal  @default(0) @db.Decimal(12, 4) // Initial received/opening net KG
+  currentBags    Int       @default(0)
+  currentWeightKg Decimal  @default(0) @db.Decimal(12, 4) // Aggregated current KG across locations
   
   status         LotStatus @default(RECEIVED)
   receivedDate   DateTime  @default(now())
@@ -244,6 +255,7 @@ model Lot {
   shadeCode      String?
   remarks        String?
 
+  transactions        Transaction[]       @relation("LotTransactions")
   stockBalances       StockBalance[]
   transactionItems    TransactionItem[]
   yarnAllocations     YarnAllocation[]
@@ -255,7 +267,13 @@ model Lot {
 
   @@index([lotNumber])
   @@index([yarnId])
+  @@index([yarnCount])
+  @@index([supplierId])
+  @@index([parentLotId])
   @@index([status])
+  @@index([receivedDate])
+  @@index([updatedAt])
+  @@index([currentWeightKg])
 }
 
 // =============================================================================
@@ -299,23 +317,56 @@ model StockBalance {
 }
 
 model Transaction {
-  id              String            @id @default(uuid())
-  transactionNumber String          @unique
-  type            TransactionType
-  status          TransactionStatus @default(COMPLETED)
-  transactionDate DateTime          @default(now())
-  referenceNumber String?           // Invoice / Gate pass / Delivery Challan no.
-  notes           String?
-  createdById     String?
+  id                    String            @id @default(uuid())
+  transactionNumber     String            @unique
+  type                  TransactionType
+  status                TransactionStatus @default(COMPLETED)
+  transactionDate       DateTime          @default(now())
+  
+  // Core inventory transaction fields
+  yarnCount             String?           // manual text input e.g. "1/10 KW"
+  partyId               String?
+  party                 Party?            @relation("PartyTransactions", fields: [partyId], references: [id])
+  lotId                 String?
+  lot                   Lot?              @relation("LotTransactions", fields: [lotId], references: [id])
+  bags                  Int               @default(0)
+  kilos                 Decimal           @default(0) @db.Decimal(12, 4)
+  poNumber              String?
+  poRequirementId       String?
+  poRequirement         PORequirement?    @relation("RequirementTransactions", fields: [poRequirementId], references: [id])
+  purpose               String?           // PILE, GROUND, WEFT, DYED, NPD, GENERAL
+  
+  // Reference & audit for RETURN and CORRECTION/REVERSAL
+  referenceTransactionId String?
+  referenceTransaction  Transaction?      @relation("TransactionReferences", fields: [referenceTransactionId], references: [id])
+  referencedBy          Transaction[]     @relation("TransactionReferences")
+  
+  correctionReason      String?
+  oldValue              Json?
+  newValue              Json?
+  notes                 String?           // Remarks
+  referenceNumber       String?           // Invoice / Gate pass / Delivery Challan no.
+  
+  createdById           String?
+  createdBy             User?             @relation("UserTransactions", fields: [createdById], references: [id])
 
-  items           TransactionItem[]
+  items                 TransactionItem[]
 
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
 
   @@index([transactionNumber])
   @@index([type])
   @@index([transactionDate])
+  @@index([yarnCount])
+  @@index([partyId])
+  @@index([lotId])
+  @@index([poNumber])
+  @@index([referenceTransactionId])
+  @@index([type, transactionDate])
+  @@index([lotId, type])
+  @@index([partyId, type])
+  @@index([createdAt])
 }
 
 model TransactionItem {
@@ -505,12 +556,15 @@ model Party {
   purchaseOrders PurchaseOrder[]
   deliveries     Delivery[]
   dyeingOrders   DyeingOrder[]
+  transactions   Transaction[]   @relation("PartyTransactions")
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   @@index([code])
   @@index([type])
+  @@index([isActive])
+  @@index([name])
 }
 
 model PurchaseOrder {
@@ -534,21 +588,29 @@ model PurchaseOrder {
 }
 
 model PORequirement {
-  id              String        @id @default(uuid())
-  purchaseOrderId String
-  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  yarnId          String
-  yarn            Yarn          @relation(fields: [yarnId], references: [id])
+  id              String         @id @default(uuid())
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  yarnId          String?
+  yarn            Yarn?          @relation(fields: [yarnId], references: [id])
+  yarnCount       String?        // Count e.g. "1/10 KW"
+  purpose         String?        // PILE, GROUND, WEFT, DYED, NPD, GENERAL
+  poNumber        String?
 
-  requiredKg      Decimal       @db.Decimal(12, 4)
-  issuedKg        Decimal       @default(0) @db.Decimal(12, 4)
+  requiredKg      Decimal        @db.Decimal(12, 4)
+  issuedKg        Decimal        @default(0) @db.Decimal(12, 4)
   notes           String?
 
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  transactions    Transaction[]  @relation("RequirementTransactions")
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   @@index([purchaseOrderId])
   @@index([yarnId])
+  @@index([yarnCount])
+  @@index([purpose])
+  @@index([poNumber])
 }
 
 model DyeingOrder {

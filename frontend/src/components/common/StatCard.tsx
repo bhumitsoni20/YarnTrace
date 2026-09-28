@@ -13,6 +13,7 @@ interface StatCardProps {
   };
   accentColor?: "brand" | "blue" | "emerald" | "amber" | "slate";
   isEmpty?: boolean;
+  emptyText?: string;
 }
 
 export default function StatCard({
@@ -23,6 +24,7 @@ export default function StatCard({
   trend,
   accentColor = "brand",
   isEmpty = false,
+  emptyText,
 }: StatCardProps) {
   const accentStyles = {
     brand: "border-l-brand-600 text-brand-600 bg-brand-50/50",
@@ -43,7 +45,7 @@ export default function StatCard({
   return (
     <div
       className={cn(
-        "relative flex flex-col justify-between rounded-lg border border-slate-200 bg-white p-5 shadow-card border-l-4 transition-all hover:shadow-hover",
+        "relative flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-card border-l-4 card-interactive",
         accentStyles[accentColor]
       )}
     >
@@ -72,9 +74,9 @@ export default function StatCard({
         {subtitle && (
           <span className="text-slate-500 truncate">{subtitle}</span>
         )}
-        {isEmpty && (
+        {isEmpty && emptyText && (
           <span className="text-slate-400 italic text-[11px]">
-            No inventory data yet
+            {emptyText}
           </span>
         )}
         {trend && (

@@ -7,8 +7,8 @@ export default () => ({
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET || 'yarntrace_super_secure_access_secret_token_2026_key',
     refreshSecret: process.env.JWT_REFRESH_SECRET || 'yarntrace_super_secure_refresh_secret_token_2026_key',
-    accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
-    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+    accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '7d',
+    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
   },
   cors: {
     origin: process.env.CORS_ORIGIN || 'http://localhost:3000',

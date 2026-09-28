@@ -18,6 +18,7 @@ import { PartiesModule } from './parties/parties.module';
 import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module';
 import { TraceabilityModule } from './traceability/traceability.module';
 import { ReportsModule } from './reports/reports.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { ReportsModule } from './reports/reports.module';
     PurchaseOrdersModule,
     TraceabilityModule,
     ReportsModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}

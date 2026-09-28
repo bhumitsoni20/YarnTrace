@@ -6,13 +6,26 @@ export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getKpiSummary() {
-    // Return empty / foundational KPI counts without fake hardcoded production numbers
     const [
+      lotAgg,
+      rcvAgg,
+      issAgg,
       totalLotsCount,
       activeLocationsCount,
       productionTeamsCount,
       pendingOrdersCount,
     ] = await Promise.all([
+      this.prisma.lot.aggregate({
+        _sum: { currentWeightKg: true, currentBags: true },
+      }),
+      this.prisma.transaction.aggregate({
+        where: { type: 'RECEIVED' },
+        _sum: { kilos: true },
+      }),
+      this.prisma.transaction.aggregate({
+        where: { type: 'ISSUED' },
+        _sum: { kilos: true },
+      }),
       this.prisma.lot.count(),
       this.prisma.stockLocation.count({ where: { isActive: true } }),
       this.prisma.productionTeam.count({ where: { isActive: true } }),
@@ -24,9 +37,9 @@ export class ReportsService {
       activeLocationsCount,
       productionTeamsCount,
       pendingOrdersCount,
-      totalStockKg: '0.0000',
-      receivedKg: '0.0000',
-      issuedKg: '0.0000',
+      totalStockKg: Number(lotAgg._sum.currentWeightKg || 0).toFixed(4),
+      receivedKg: Number(rcvAgg._sum.kilos || 0).toFixed(4),
+      issuedKg: Number(issAgg._sum.kilos || 0).toFixed(4),
       withProductionTeamsKg: '0.0000',
       consumedKg: '0.0000',
     };

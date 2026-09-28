@@ -53,7 +53,18 @@ async function main() {
 
   // 2. Granular Permissions
   const permissionsList = [
+    { key: 'dashboard.view', name: 'View Dashboard', module: 'DASHBOARD' },
+    { key: 'view_dashboard', name: 'View Dashboard (Legacy)', module: 'DASHBOARD' },
     { key: 'view_inventory', name: 'View Inventory', module: 'INVENTORY' },
+    { key: 'inventory.view', name: 'View Inventory (v2)', module: 'INVENTORY' },
+    { key: 'inventory.add_opening', name: 'Add Opening Stock', module: 'INVENTORY' },
+    { key: 'inventory.receive', name: 'Receive Inward Yarn', module: 'INVENTORY' },
+    { key: 'inventory.issue', name: 'Issue Yarn to Production', module: 'INVENTORY' },
+    { key: 'inventory.return', name: 'Return Issued Yarn', module: 'INVENTORY' },
+    { key: 'inventory.retire', name: 'Retire / Write-off Stock', module: 'INVENTORY' },
+    { key: 'inventory.sell', name: 'Sell Stock Externally', module: 'INVENTORY' },
+    { key: 'inventory.correct', name: 'Correct / Reverse Transactions', module: 'INVENTORY' },
+    { key: 'inventory.export', name: 'Export Inventory Records', module: 'INVENTORY' },
     { key: 'add_yarn', name: 'Add Yarn', module: 'INVENTORY' },
     { key: 'issue_yarn', name: 'Issue Yarn', module: 'INVENTORY' },
     { key: 'update_stock', name: 'Update Stock', module: 'INVENTORY' },
@@ -82,7 +93,7 @@ async function main() {
       },
     });
 
-    // Assign to admin role
+    // Assign all to admin role
     await prisma.rolePermission.upsert({
       where: {
         roleId_permissionId: {
@@ -95,6 +106,40 @@ async function main() {
         roleId: adminRole.id,
         permissionId: perm.id,
       },
+    });
+
+    // Assign inventory permissions to STOCK_HEAD
+    if (p.module === 'INVENTORY' || p.key === 'manage_parties') {
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: {
+            roleId: stockHeadRole.id,
+            permissionId: perm.id,
+          },
+        },
+        update: {},
+        create: {
+          roleId: stockHeadRole.id,
+          permissionId: perm.id,
+        },
+      });
+    }
+  }
+
+  // 2.1 Initial Party Master (Suppliers, Dyeing Mills, Customers)
+  const defaultParties = [
+    { code: 'VARDHMAN', name: 'Vardhman Textiles Ltd', type: PartyType.SUPPLIER, contactPerson: 'Rajesh Sharma', phone: '+919812345678', email: 'sales@vardhman.com' },
+    { code: 'TRIDENT', name: 'Trident Group', type: PartyType.SUPPLIER, contactPerson: 'Anil Gupta', phone: '+919823456789', email: 'yarn@trident.com' },
+    { code: 'NAHAR', name: 'Nahar Spinning Mills', type: PartyType.SUPPLIER, contactPerson: 'Suresh Verma', phone: '+919834567890', email: 'info@nahar.com' },
+    { code: 'AURA_DYE', name: 'Aura Processors & Dyeing Mill', type: PartyType.DYEING_MILL, contactPerson: 'Vikram Singh', phone: '+919845678901', email: 'orders@auradye.com' },
+    { code: 'APEX_EXP', name: 'Apex Home Textiles (Customer)', type: PartyType.CUSTOMER, contactPerson: 'Pooja Mehta', phone: '+919856789012', email: 'merch@apextextiles.com' },
+  ];
+
+  for (const party of defaultParties) {
+    await prisma.party.upsert({
+      where: { code: party.code },
+      update: {},
+      create: party,
     });
   }
 
