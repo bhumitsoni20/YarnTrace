@@ -1,8 +1,8 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, Building2 } from "lucide-react";
+import { Loader2, Building2, AlertCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,15 +17,37 @@ import { Label } from "../ui/label";
 import { Party } from "../../types/inventory";
 
 const partySchema = z.object({
-  code: z.string().min(2, "Party code must be at least 2 characters"),
-  name: z.string().min(2, "Party name is required"),
+  code: z
+    .string()
+    .transform((v) => v.trim())
+    .pipe(
+      z
+        .string()
+        .min(2, "Party code must be at least 2 characters")
+        .regex(/^[A-Za-z0-9_\-]+$/, "Party code must contain only letters, numbers, hyphens, or underscores")
+    ),
+  name: z
+    .string()
+    .transform((v) => v.trim())
+    .pipe(z.string().min(2, "Party name must be at least 2 characters")),
   type: z.enum(["SUPPLIER", "CUSTOMER", "DYEING_MILL", "JOB_WORKER", "INTERNAL"]),
   contactPerson: z.string().optional(),
   email: z.string().email("Invalid email address").optional().or(z.literal("")),
-  phone: z.string().optional(),
+  phone: z
+    .string()
+    .optional()
+    .refine(
+      (val) => {
+        if (!val || val.trim() === "") return true;
+        const trimmed = val.trim();
+        if (!/^[+]?[\d\s\-()]+$/.test(trimmed)) return false;
+        const digitCount = trimmed.replace(/\D/g, "").length;
+        return digitCount >= 7 && digitCount <= 12;
+      },
+      { message: "Phone number must have 7–12 digits" }
+    ),
   address: z.string().optional(),
   gstNumber: z.string().optional(),
-  isActive: z.boolean().default(true),
 });
 
 export type PartyFormValues = z.infer<typeof partySchema>;
@@ -46,6 +68,7 @@ export default function PartyModal({
   isLoading,
 }: PartyModalProps) {
   const isEditing = Boolean(editingParty);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
     register,
@@ -63,46 +86,66 @@ export default function PartyModal({
       phone: "",
       address: "",
       gstNumber: "",
-      isActive: true,
     },
   });
 
   useEffect(() => {
-    if (editingParty) {
-      reset({
-        code: editingParty.code,
-        name: editingParty.name,
-        type: editingParty.type as "SUPPLIER" | "CUSTOMER" | "DYEING_MILL" | "JOB_WORKER" | "INTERNAL",
-        contactPerson: editingParty.contactPerson || "",
-        email: editingParty.email || "",
-        phone: editingParty.phone || "",
-        address: editingParty.address || "",
-        gstNumber: editingParty.gstNumber || "",
-        isActive: editingParty.isActive ?? true,
-      });
-    } else {
-      reset({
-        code: "",
-        name: "",
-        type: "SUPPLIER",
-        contactPerson: "",
-        email: "",
-        phone: "",
-        address: "",
-        gstNumber: "",
-        isActive: true,
-      });
+    if (isOpen) {
+      setSubmitError(null);
+      if (editingParty) {
+        reset({
+          code: editingParty.code,
+          name: editingParty.name,
+          type: editingParty.type as "SUPPLIER" | "CUSTOMER" | "DYEING_MILL" | "JOB_WORKER" | "INTERNAL",
+          contactPerson: editingParty.contactPerson || "",
+          email: editingParty.email || "",
+          phone: editingParty.phone || "",
+          address: editingParty.address || "",
+          gstNumber: editingParty.gstNumber || "",
+        });
+      } else {
+        reset({
+          code: "",
+          name: "",
+          type: "SUPPLIER",
+          contactPerson: "",
+          email: "",
+          phone: "",
+          address: "",
+          gstNumber: "",
+        });
+      }
     }
-  }, [editingParty, reset]);
+  }, [editingParty, isOpen, reset]);
 
   const handleFormSubmit = async (values: PartyFormValues) => {
-    await onSubmit(values);
+    setSubmitError(null);
+    try {
+      await onSubmit(values);
+      reset();
+      onClose();
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string; errors?: string[] } } };
+      const errors = axiosErr?.response?.data?.errors;
+      const message = axiosErr?.response?.data?.message;
+      if (errors && errors.length > 0) {
+        setSubmitError(errors.join(". "));
+      } else if (message) {
+        setSubmitError(message);
+      } else {
+        setSubmitError("An unexpected error occurred. Please try again.");
+      }
+    }
+  };
+
+  const handleCancel = () => {
+    setSubmitError(null);
     reset();
     onClose();
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleCancel}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <div className="flex items-center gap-3">
@@ -121,6 +164,13 @@ export default function PartyModal({
             </div>
           </div>
         </DialogHeader>
+
+        {submitError && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-800 font-medium">
+            <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+            <span>{submitError}</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4 pt-1">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -204,6 +254,9 @@ export default function PartyModal({
                 {...register("phone")}
                 className="h-10 text-xs bg-slate-50/60 focus:bg-white font-mono"
               />
+              {errors.phone && (
+                <p className="text-[11px] font-medium text-red-500 mt-1">{errors.phone.message}</p>
+              )}
             </div>
           </div>
 
@@ -253,7 +306,7 @@ export default function PartyModal({
           </div>
 
           <DialogFooter className="pt-3">
-            <Button variant="outline" type="button" onClick={onClose} disabled={isLoading} className="h-10 px-5 text-xs font-semibold">
+            <Button variant="outline" type="button" onClick={handleCancel} disabled={isLoading} className="h-10 px-5 text-xs font-semibold">
               Cancel
             </Button>
             <Button variant="primary" type="submit" disabled={isLoading} className="h-10 px-5 text-xs font-semibold gap-1.5 shadow-sm">
@@ -266,3 +319,4 @@ export default function PartyModal({
     </Dialog>
   );
 }
+
