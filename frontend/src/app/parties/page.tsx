@@ -92,7 +92,7 @@ export default function PartiesPage() {
   };
 
   const createPartyMutation = useMutation({
-    mutationFn: (values: PartyFormValues) => apiClient.post("/parties", values),
+    mutationFn: (values: Record<string, unknown>) => apiClient.post("/parties", values),
     onSuccess: () => {
       invalidateAll();
       showToast("success", "Commercial partner created successfully!");
@@ -103,7 +103,7 @@ export default function PartiesPage() {
   });
 
   const updatePartyMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: Partial<PartyFormValues> }) =>
+    mutationFn: ({ id, values }: { id: string; values: Record<string, unknown> }) =>
       apiClient.patch(`/parties/${id}`, values),
     onSuccess: () => {
       invalidateAll();
@@ -172,10 +172,22 @@ export default function PartiesPage() {
   };
 
   const handleFormSubmit = async (values: PartyFormValues) => {
+    // For create: empty optional fields → undefined (omitted from payload, skips @IsOptional)
+    // For edit: empty optional fields → null (tells backend to clear the field)
+    const emptyVal = editingParty ? null : undefined;
+    const { code, ...rest } = values;
+    const cleaned = {
+      ...(editingParty ? rest : values), // exclude code on edit (immutable)
+      contactPerson: values.contactPerson?.trim() || emptyVal,
+      email: values.email?.trim() || emptyVal,
+      phone: values.phone?.trim() || emptyVal,
+      address: values.address?.trim() || emptyVal,
+      gstNumber: values.gstNumber?.trim() || emptyVal,
+    };
     if (editingParty) {
-      await updatePartyMutation.mutateAsync({ id: editingParty.id, values });
+      await updatePartyMutation.mutateAsync({ id: editingParty.id, values: cleaned });
     } else {
-      await createPartyMutation.mutateAsync(values);
+      await createPartyMutation.mutateAsync(cleaned);
     }
   };
 

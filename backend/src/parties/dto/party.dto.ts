@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsOptional, IsEnum, IsEmail, IsBoolean } from 'class-validator';
+import { IsNotEmpty, IsString, IsOptional, IsEnum, IsEmail, IsBoolean, Matches } from 'class-validator';
 import { PartyType } from '@prisma/client';
 
 export class CreatePartyDto {
@@ -31,6 +31,7 @@ export class CreatePartyDto {
   @ApiPropertyOptional({ description: 'Contact phone number', example: '+919812345678' })
   @IsOptional()
   @IsString()
+  @Matches(/^[+]?[\d\s\-()]{7,15}$/, { message: 'Phone number must have 7–12 digits and only contain digits, spaces, hyphens, or parentheses' })
   phone?: string;
 
   @ApiPropertyOptional({ description: 'Physical address / Mill location' })
@@ -68,6 +69,7 @@ export class UpdatePartyDto {
   @ApiPropertyOptional({ description: 'Phone number' })
   @IsOptional()
   @IsString()
+  @Matches(/^[+]?[\d\s\-()]{7,15}$/, { message: 'Phone number must have 7–12 digits and only contain digits, spaces, hyphens, or parentheses' })
   phone?: string;
 
   @ApiPropertyOptional({ description: 'Physical address' })
