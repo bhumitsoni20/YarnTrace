@@ -10,7 +10,7 @@ export class AddOpeningStockDto {
 
   @ApiProperty({ description: 'Yarn count manual text input (e.g., 1/10 KW, 10 + 80 PVA, 16+80 ZT)', example: '1/10 KW' })
   @IsNotEmpty({ message: 'Yarn count is required' })
-  @IsString()
+  @IsString() 
   count: string;
 
   @ApiProperty({ description: 'Party Master UUID', example: 'd3b07384-d113-467a-9a99-97bc618e7e11' })
