@@ -162,8 +162,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Page transitions */
 .page-enter {
-  animation: slideUpFade 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  will-change: transform, opacity;
+  animation: pageFadeIn 0.2s ease-out forwards;
 }
 
 .page-fade {
@@ -235,24 +234,91 @@ h1, h2, h3, h4, h5, h6 {
   animation: pulseGlow 2.5s infinite ease-in-out;
 }
 
-/* Print Styles */
+/* =============================================================================
+   PRINT STYLES FOR VOUCHERS & AUDIT REPORTS
+   ============================================================================= */
 @media print {
-  body * {
-    visibility: hidden;
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm;
   }
-  #yarn-slip-printable,
-  #yarn-slip-printable * {
-    visibility: visible;
+
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
   }
-  #yarn-slip-printable {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 20px;
-    border: none !important;
+
+  /* Reset document for clean printing */
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide app navigation, headers, sidebars, buttons, dialog overlays */
+  header,
+  nav,
+  aside,
+  footer,
+  button,
+  .print\:hidden,
+  [role="dialog"] > div:first-child,
+  [class*="backdrop-blur"],
+  [class*="bg-slate-950"] {
+    display: none !important;
+  }
+
+  /* Reset modal containers so they don't center or clip on printed page */
+  [data-radix-portal],
+  [data-radix-portal] > div,
+  .fixed,
+  .modal-enter,
+  [role="dialog"] {
+    position: static !important;
+    transform: none !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
     box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Hide everything in body except the printable slip */
+  body > *:not([data-radix-portal]) {
+    display: none !important;
+  }
+
+  #yarn-slip-printable {
+    display: block !important;
+    visibility: visible !important;
+    position: relative !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #yarn-slip-printable * {
+    visibility: visible !important;
   }
 }
 

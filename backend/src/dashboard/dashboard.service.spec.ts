@@ -87,6 +87,26 @@ describe('DashboardService', () => {
           },
         ]),
       },
+      yarnAllocation: {
+        aggregate: jest.fn().mockResolvedValue({
+          _sum: { allocatedKg: new Prisma.Decimal(0), bags: 0 },
+        }),
+      },
+      consumptionRecord: {
+        aggregate: jest.fn().mockResolvedValue({
+          _sum: { consumedKg: new Prisma.Decimal(0), wasteKg: new Prisma.Decimal(0), bags: 0 },
+        }),
+      },
+      productionReturn: {
+        aggregate: jest.fn().mockResolvedValue({
+          _sum: { returnedKg: new Prisma.Decimal(0), returnedBags: 0 },
+        }),
+      },
+      productionOutput: {
+        aggregate: jest.fn().mockResolvedValue({
+          _sum: { outputQuantityKg: new Prisma.Decimal(0) },
+        }),
+      },
       lot: {
         findMany: jest.fn().mockResolvedValue([
           {

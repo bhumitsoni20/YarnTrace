@@ -62,6 +62,7 @@ apiClient.interceptors.response.use(
           if (originalRequest.headers && token) {
             originalRequest.headers.Authorization = `Bearer ${token}`;
           }
+          originalRequest._retry = true;
           return apiClient(originalRequest);
         })
         .catch((err) => Promise.reject(err));
@@ -107,7 +108,7 @@ apiClient.interceptors.response.use(
     try {
       const loginRes = await axios.post(`${BASE_URL}/auth/login`, {
         email: "admin@yarntrace.com",
-        password: "Admin@123",
+        password: "Password123!",
       });
 
       const { accessToken: newAccessToken, refreshToken: newRefreshToken, user } =

@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // =============================================================================
@@ -137,6 +138,11 @@ model User {
   userPermissions UserPermission[]
   auditLogs       AuditLog[]
   transactions    Transaction[]   @relation("UserTransactions")
+  productionOrders    ProductionOrder[]   @relation("UserProductionOrders")
+  allocations         YarnAllocation[]    @relation("UserAllocations")
+  consumptionRecords  ConsumptionRecord[] @relation("UserConsumptions")
+  productionReturns   ProductionReturn[]  @relation("UserReturns")
+  productionOutputs   ProductionOutput[]  @relation("UserOutputs")
 
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -260,6 +266,7 @@ model Lot {
   transactionItems    TransactionItem[]
   yarnAllocations     YarnAllocation[]
   consumptionRecords  ConsumptionRecord[]
+  productionReturns   ProductionReturn[]
   dyeingMovements     DyeingMovement[]
 
   createdAt      DateTime  @default(now())
@@ -351,6 +358,8 @@ model Transaction {
   createdBy             User?             @relation("UserTransactions", fields: [createdById], references: [id])
 
   items                 TransactionItem[]
+  allocations           YarnAllocation[]   @relation("AllocationTransaction")
+  productionReturns     ProductionReturn[] @relation("ProductionReturnTransaction")
 
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
@@ -404,15 +413,20 @@ model ProductionTeam {
   name        String
   department  String   // "SPINNING", "WARPING", "WEAVING", "KNITTING"
   teamLead    String?
+  remarks     String?
   isActive    Boolean  @default(true)
 
+  orders             ProductionOrder[]
   allocations        YarnAllocation[]
   consumptionRecords ConsumptionRecord[]
+  returns            ProductionReturn[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([code])
+  @@index([department])
+  @@index([isActive])
 }
 
 model ProductionOrder {
@@ -421,13 +435,30 @@ model ProductionOrder {
   status        ProductionOrderStatus @default(PLANNED)
   targetQuantity Decimal              @db.Decimal(12, 4)
   unit          String                @default("KG")
+  priority      String                @default("MEDIUM") // "LOW", "MEDIUM", "HIGH", "URGENT"
+  purpose       String?               // "WEAVING", "WARPING", "KNITTING", "SAMPLING", etc.
+  productName   String?
+  productType   String?
+  poNumber      String?
+  
+  partyId       String?
+  party         Party?                @relation("PartyProductionOrders", fields: [partyId], references: [id])
+  
+  productionTeamId String?
+  productionTeam   ProductionTeam?    @relation(fields: [productionTeamId], references: [id])
+  
   startDate     DateTime?
   targetDate    DateTime?
   completedDate DateTime?
   remarks       String?
+  
+  createdById   String?
+  createdBy     User?                 @relation("UserProductionOrders", fields: [createdById], references: [id])
 
   allocations        YarnAllocation[]
   consumptionRecords ConsumptionRecord[]
+  returns            ProductionReturn[]
+  outputs            ProductionOutput[]
   products           Product[]
 
   createdAt     DateTime              @default(now())
@@ -435,22 +466,38 @@ model ProductionOrder {
 
   @@index([orderNumber])
   @@index([status])
+  @@index([partyId])
+  @@index([productionTeamId])
+  @@index([poNumber])
+  @@index([createdAt])
 }
 
 model YarnAllocation {
   id                String               @id @default(uuid())
   productionOrderId String
-  productionOrder   ProductionOrder      @relation(fields: [productionOrderId], references: [id])
+  productionOrder   ProductionOrder      @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
   productionTeamId  String
   productionTeam    ProductionTeam       @relation(fields: [productionTeamId], references: [id])
   lotId             String
   lot               Lot                  @relation(fields: [lotId], references: [id])
+  
+  inventoryTransactionId String?
+  inventoryTransaction   Transaction?    @relation("AllocationTransaction", fields: [inventoryTransactionId], references: [id])
 
+  yarnCount         String?              // e.g. "1/10 KW"
+  bags              Int                  @default(0)
   allocatedKg       Decimal              @db.Decimal(12, 4)
   issuedKg          Decimal              @default(0) @db.Decimal(12, 4)
   status            YarnAllocationStatus @default(ALLOCATED)
   allocatedDate     DateTime             @default(now())
+  
+  allocatedById     String?
+  allocatedBy       User?                @relation("UserAllocations", fields: [allocatedById], references: [id])
+  
   remarks           String?
+
+  consumptionRecords ConsumptionRecord[]
+  returns            ProductionReturn[]
 
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
@@ -458,23 +505,41 @@ model YarnAllocation {
   @@index([productionOrderId])
   @@index([productionTeamId])
   @@index([lotId])
+  @@index([inventoryTransactionId])
+  @@index([status])
 }
 
 model ConsumptionRecord {
   id                String          @id @default(uuid())
   productionOrderId String
-  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id])
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
   productionTeamId  String
   productionTeam    ProductionTeam  @relation(fields: [productionTeamId], references: [id])
   lotId             String
   lot               Lot             @relation(fields: [lotId], references: [id])
+  
+  yarnAllocationId  String?
+  yarnAllocation    YarnAllocation? @relation(fields: [yarnAllocationId], references: [id])
 
+  yarnCount         String?
+  bags              Int             @default(0)
   consumedKg        Decimal         @db.Decimal(12, 4)
   wasteKg           Decimal         @default(0) @db.Decimal(12, 4)
+  wasteCategory     String?         // "FLY_WASTE", "HARD_WASTE", "DEFECTIVE", "FLOOR_SWEEPING", etc.
   netProducedKg     Decimal?        @db.Decimal(12, 4)
+  purpose           String?
   consumptionDate   DateTime        @default(now())
+  
   recordedById      String?
+  recordedBy        User?           @relation("UserConsumptions", fields: [recordedById], references: [id])
   remarks           String?
+  
+  isCorrected            Boolean         @default(false)
+  correctionReason       String?
+  correctedById          String?
+  originalConsumptionId  String?
+  originalConsumption    ConsumptionRecord?  @relation("ConsumptionCorrections", fields: [originalConsumptionId], references: [id])
+  correctionRecords      ConsumptionRecord[] @relation("ConsumptionCorrections")
 
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
@@ -482,7 +547,67 @@ model ConsumptionRecord {
   @@index([productionOrderId])
   @@index([productionTeamId])
   @@index([lotId])
+  @@index([yarnAllocationId])
   @@index([consumptionDate])
+  @@index([isCorrected])
+}
+
+model ProductionReturn {
+  id                String          @id @default(uuid())
+  productionOrderId String
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionTeamId  String
+  productionTeam    ProductionTeam  @relation(fields: [productionTeamId], references: [id])
+  lotId             String
+  lot               Lot             @relation(fields: [lotId], references: [id])
+  
+  yarnAllocationId  String?
+  yarnAllocation    YarnAllocation? @relation(fields: [yarnAllocationId], references: [id])
+
+  inventoryTransactionId String?
+  inventoryTransaction   Transaction?  @relation("ProductionReturnTransaction", fields: [inventoryTransactionId], references: [id])
+
+  yarnCount         String?
+  returnedKg        Decimal         @db.Decimal(12, 4)
+  returnedBags      Int             @default(0)
+  returnDate        DateTime        @default(now())
+  reason            String?
+  remarks           String?
+  
+  recordedById      String?
+  recordedBy        User?           @relation("UserReturns", fields: [recordedById], references: [id])
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([productionOrderId])
+  @@index([productionTeamId])
+  @@index([lotId])
+  @@index([yarnAllocationId])
+  @@index([inventoryTransactionId])
+  @@index([returnDate])
+}
+
+model ProductionOutput {
+  id                String          @id @default(uuid())
+  productionOrderId String
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  
+  productName       String
+  productCode       String?
+  outputQuantityKg  Decimal         @db.Decimal(12, 4)
+  unit              String          @default("KG")
+  outputDate        DateTime        @default(now())
+  remarks           String?
+  
+  recordedById      String?
+  recordedBy        User?           @relation("UserOutputs", fields: [recordedById], references: [id])
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([productionOrderId])
+  @@index([outputDate])
 }
 
 // =============================================================================
@@ -557,6 +682,7 @@ model Party {
   deliveries     Delivery[]
   dyeingOrders   DyeingOrder[]
   transactions   Transaction[]   @relation("PartyTransactions")
+  productionOrders ProductionOrder[] @relation("PartyProductionOrders")
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
