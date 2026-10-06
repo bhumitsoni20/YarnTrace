@@ -29,7 +29,7 @@ async function main() {
     },
   });
 
-  await prisma.role.upsert({
+  const productionHeadRole = await prisma.role.upsert({
     where: { code: 'PRODUCTION_HEAD' },
     update: {},
     create: {
@@ -47,6 +47,28 @@ async function main() {
       name: 'Quality Assurance Head',
       code: 'QUALITY_HEAD',
       description: 'QA inspection and lot approval',
+      isSystem: true,
+    },
+  });
+
+  const stockNormalRole = await prisma.role.upsert({
+    where: { code: 'STOCK_NORMAL' },
+    update: {},
+    create: {
+      name: 'Stock Normal User',
+      code: 'STOCK_NORMAL',
+      description: 'View-only access to stock and inventory data',
+      isSystem: true,
+    },
+  });
+
+  const viewerRole = await prisma.role.upsert({
+    where: { code: 'VIEWER' },
+    update: {},
+    create: {
+      name: 'Viewer',
+      code: 'VIEWER',
+      description: 'Read-only access across the system',
       isSystem: true,
     },
   });
@@ -120,6 +142,65 @@ async function main() {
         update: {},
         create: {
           roleId: stockHeadRole.id,
+          permissionId: perm.id,
+        },
+      });
+    }
+
+    // Assign view-only inventory permissions to STOCK_NORMAL
+    if (
+      p.key === 'view_inventory' ||
+      p.key === 'inventory.view'
+    ) {
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: {
+            roleId: stockNormalRole.id,
+            permissionId: perm.id,
+          },
+        },
+        update: {},
+        create: {
+          roleId: stockNormalRole.id,
+          permissionId: perm.id,
+        },
+      });
+    }
+
+    // Assign production permissions to PRODUCTION_HEAD
+    if (p.module === 'PRODUCTION') {
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: {
+            roleId: productionHeadRole.id,
+            permissionId: perm.id,
+          },
+        },
+        update: {},
+        create: {
+          roleId: productionHeadRole.id,
+          permissionId: perm.id,
+        },
+      });
+    }
+
+    // Assign view-only permissions to VIEWER role
+    const viewerPermKeys = [
+      'dashboard.view', 'view_dashboard',
+      'view_inventory', 'inventory.view',
+      'view_traceability', 'view_reports',
+    ];
+    if (viewerPermKeys.includes(p.key)) {
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: {
+            roleId: viewerRole.id,
+            permissionId: perm.id,
+          },
+        },
+        update: {},
+        create: {
+          roleId: viewerRole.id,
           permissionId: perm.id,
         },
       });
