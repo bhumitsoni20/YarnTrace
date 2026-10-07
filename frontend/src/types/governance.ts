@@ -12,11 +12,29 @@ export interface SystemUser {
   updatedAt: string;
 }
 
+export interface PermissionItem {
+  id: string;
+  key: string;
+  name: string;
+  module: string;
+  description?: string | null;
+}
+
+export interface RolePermissionEntry {
+  id: string;
+  roleId: string;
+  permissionId: string;
+  permission: PermissionItem;
+}
+
 export interface RoleListItem {
   id: string;
   name: string;
   code: string;
   description?: string | null;
   isSystem: boolean;
+  rolePermissions?: RolePermissionEntry[];
   _count?: { users: number };
+  createdAt?: string;
+  updatedAt?: string;
 }
