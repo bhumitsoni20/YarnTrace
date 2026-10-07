@@ -433,10 +433,10 @@ export default function DashboardPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => router.push("/inventory")}
+                  onClick={() => router.push("/traceability")}
                   className="text-xs text-brand-600 hover:text-brand-700 gap-1 h-7 px-2"
                 >
-                  <span>View All</span>
+                  <span>Trace All</span>
                   <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -459,7 +459,7 @@ export default function DashboardPage() {
                         <th className="py-3 px-3 text-right">Available Balance</th>
                         <th className="py-3 px-3 text-center">Status</th>
                         <th className="py-3 px-3 text-right">Last Movement</th>
-                        <th className="py-3 px-3 text-center">Action</th>
+                        <th className="py-3 px-3 text-center">Trace</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">
@@ -476,12 +476,13 @@ export default function DashboardPage() {
                               <span
                                 onClick={() =>
                                   router.push(
-                                    `/inventory?lotNumber=${encodeURIComponent(
+                                    `/traceability?lot=${encodeURIComponent(
                                       lot.lotNumber
                                     )}`
                                   )
                                 }
                                 className="hover:text-brand-600 cursor-pointer underline decoration-slate-300 hover:decoration-brand-600 underline-offset-2"
+                                title="Trace Lot Genealogy"
                               >
                                 {lot.lotNumber}
                               </span>
@@ -547,13 +548,13 @@ export default function DashboardPage() {
                               <button
                                 onClick={() =>
                                   router.push(
-                                    `/inventory?lotNumber=${encodeURIComponent(
+                                    `/traceability?lot=${encodeURIComponent(
                                       lot.lotNumber
                                     )}`
                                   )
                                 }
-                                className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500 hover:text-brand-600 transition-colors"
-                                title="View Lot in Inventory"
+                                className="p-1.5 rounded-md hover:bg-slate-100 text-brand-600 hover:text-brand-700 transition-colors"
+                                title="Open Traceability Engine"
                               >
                                 <ExternalLink className="h-3.5 w-3.5" />
                               </button>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Boxes,
@@ -18,6 +19,7 @@ import {
   CheckCircle2,
   AlertCircle,
   X,
+  GitBranch,
 } from "lucide-react";
 import AppLayout from "../../components/layout/AppLayout";
 import PageHeader from "../../components/common/PageHeader";
@@ -48,6 +50,7 @@ import CorrectionModal from "../../components/inventory/CorrectionModal";
 import YarnSlipModal from "../../components/inventory/YarnSlipModal";
 
 export default function InventoryPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
 
   // Active Tab View
@@ -528,7 +531,15 @@ export default function InventoryPage() {
                     {lots.map((lot) => (
                       <tr key={lot.id} className="hover:bg-muted/30 transition-colors">
                         <td className="py-3 px-4 font-mono font-bold text-foreground">
-                          {lot.lotNumber}
+                          <span
+                            onClick={() =>
+                              router.push(`/traceability?lot=${encodeURIComponent(lot.lotNumber)}`)
+                            }
+                            className="cursor-pointer hover:text-brand-600 hover:underline"
+                            title="Trace Lot Genealogy"
+                          >
+                            {lot.lotNumber}
+                          </span>
                           {lot.parentLot && (
                             <span className="block text-[10px] text-muted-foreground font-normal">
                               Parent: {lot.parentLot.lotNumber}
@@ -576,6 +587,18 @@ export default function InventoryPage() {
                         </td>
                         <td className="py-3 px-4 text-center">
                           <div className="flex items-center justify-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                router.push(`/traceability?lot=${encodeURIComponent(lot.lotNumber)}`)
+                              }
+                              className="h-7 px-2 text-[11px] text-brand-600 hover:text-brand-700 hover:bg-brand-50"
+                              title="Trace Lot Genealogy"
+                            >
+                              <GitBranch className="h-3 w-3 mr-0.5" />
+                              Trace
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"

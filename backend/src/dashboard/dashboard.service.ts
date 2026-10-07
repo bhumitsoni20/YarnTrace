@@ -52,12 +52,16 @@ export class DashboardService {
   ) {}
 
   async getOverview(): Promise<DashboardOverviewResponse> {
-    // Parallel PostgreSQL Aggregations for Total Stock, Received, Issued, POs, and Live Lots
+    // Parallel PostgreSQL Aggregations for Total Stock, Received, Issued, POs, Production, and Live Lots
     const [
       stockSummary,
       receivedAgg,
       issuedAgg,
       poRequirements,
+      allocationsAgg,
+      consumptionAgg,
+      returnsAgg,
+      outputsAgg,
       lots,
       recentTransactions,
     ] = await Promise.all([
@@ -93,6 +97,27 @@ export class DashboardService {
             },
           },
         },
+      }),
+
+      // Production Yarn Allocations
+      this.prisma.yarnAllocation.aggregate({
+        _sum: { allocatedKg: true, bags: true },
+      }),
+
+      // Production Yarn Consumption Records
+      this.prisma.consumptionRecord.aggregate({
+        where: { isCorrected: false },
+        _sum: { consumedKg: true, wasteKg: true, bags: true },
+      }),
+
+      // Production Yarn Returns to Main Stock
+      this.prisma.productionReturn.aggregate({
+        _sum: { returnedKg: true, returnedBags: true },
+      }),
+
+      // Production Output Records
+      this.prisma.productionOutput.aggregate({
+        _sum: { outputQuantityKg: true },
       }),
 
       // Live Active Lots for Traceability table
@@ -185,6 +210,14 @@ export class DashboardService {
       }
     }
 
+    // Compute Production Metrics
+    const totalAllocatedKg = Number(allocationsAgg._sum.allocatedKg || 0);
+    const totalConsumedKg = Number(consumptionAgg._sum.consumedKg || 0);
+    const totalWasteKg = Number(consumptionAgg._sum.wasteKg || 0);
+    const totalReturnedKg = Number(returnsAgg._sum.returnedKg || 0);
+    const productionTeamKg = Math.max(0, totalAllocatedKg - totalConsumedKg - totalWasteKg - totalReturnedKg);
+    const finalOutputKg = Number(outputsAgg._sum.outputQuantityKg || 0);
+
     // Format Live Lots
     const liveLots = lots.map((lot) => {
       const lastTx = lot.transactions && lot.transactions.length > 0 ? lot.transactions[0] : null;
@@ -234,11 +267,11 @@ export class DashboardService {
       receivedLotsCount: receivedAgg._count.id || 0,
       issuedKg: Number((Number(issuedAgg._sum.kilos || 0)).toFixed(4)),
       issuedBags: issuedAgg._sum.bags || 0,
-      productionTeamKg: 0, // Future Scope
-      consumedKg: 0, // Future Scope
+      productionTeamKg: Number(productionTeamKg.toFixed(4)),
+      consumedKg: Number(totalConsumedKg.toFixed(4)),
       pendingPurchaseOrders: pendingPoIds.size,
       pendingRequirementsCount,
-      finalOutputKg: 0, // Future Scope
+      finalOutputKg: Number(finalOutputKg.toFixed(4)),
       activeLotsCount: stockSummary.activeLotsCount,
       totalPartiesCount: stockSummary.totalParties,
       liveLots,

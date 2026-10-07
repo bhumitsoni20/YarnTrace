@@ -92,6 +92,17 @@ async function main() {
     { key: 'update_stock', name: 'Update Stock', module: 'INVENTORY' },
     { key: 'manage_production', name: 'Manage Production', module: 'PRODUCTION' },
     { key: 'record_consumption', name: 'Record Consumption', module: 'PRODUCTION' },
+    { key: 'production.view', name: 'View Production Orders & Floor', module: 'PRODUCTION' },
+    { key: 'production.create', name: 'Create Work Orders', module: 'PRODUCTION' },
+    { key: 'production.edit', name: 'Edit Work Orders', module: 'PRODUCTION' },
+    { key: 'production.allocate', name: 'Allocate Issued Yarn to Teams', module: 'PRODUCTION' },
+    { key: 'production.consume', name: 'Record Actual Floor Consumption', module: 'PRODUCTION' },
+    { key: 'production.return', name: 'Return Unused Yarn from Team', module: 'PRODUCTION' },
+    { key: 'production.complete', name: 'Complete Work Orders', module: 'PRODUCTION' },
+    { key: 'production.cancel', name: 'Cancel Work Orders', module: 'PRODUCTION' },
+    { key: 'production.correct', name: 'Correct Consumption Records', module: 'PRODUCTION' },
+    { key: 'production.manage_teams', name: 'Manage Production Teams Master', module: 'PRODUCTION' },
+    { key: 'production.view_reports', name: 'View Production Reports', module: 'PRODUCTION' },
     { key: 'manage_suppliers', name: 'Manage Suppliers', module: 'COMMERCIAL' },
     { key: 'manage_parties', name: 'Manage Parties', module: 'COMMERCIAL' },
     { key: 'manage_purchase_orders', name: 'Manage Purchase Orders', module: 'COMMERCIAL' },
@@ -168,7 +179,7 @@ async function main() {
     }
 
     // Assign production permissions to PRODUCTION_HEAD
-    if (p.module === 'PRODUCTION') {
+    if (p.module === 'PRODUCTION' || p.key === 'view_traceability') {
       await prisma.rolePermission.upsert({
         where: {
           roleId_permissionId: {
@@ -205,6 +216,22 @@ async function main() {
         },
       });
     }
+  }
+
+  // 2.0 Default Production Teams
+  const defaultTeams = [
+    { code: 'SPIN-A', name: 'Spinning Team Alpha', department: 'SPINNING', teamLead: 'Mahesh Patel', remarks: 'Primary ring spinning unit' },
+    { code: 'WARP-1', name: 'Warping Unit #1', department: 'WARPING', teamLead: 'Arun Yadav', remarks: 'High speed warping section' },
+    { code: 'WEAVE-1', name: 'Weaving Floor Team A', department: 'WEAVING', teamLead: 'Ramesh Kumar', remarks: 'Air-jet loom weaving unit' },
+    { code: 'KNIT-1', name: 'Knitting Unit North', department: 'KNITTING', teamLead: 'Kishore Sharma', remarks: 'Circular knitting line' },
+  ];
+
+  for (const team of defaultTeams) {
+    await prisma.productionTeam.upsert({
+      where: { code: team.code },
+      update: {},
+      create: team,
+    });
   }
 
   // 2.1 Initial Party Master (Suppliers, Dyeing Mills, Customers)
