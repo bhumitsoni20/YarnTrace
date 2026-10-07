@@ -347,36 +347,46 @@ export class InventoryService {
       }
 
       // 2. Validate PO + 103% Rule
-      // Matching key: PO No + Yarn Count + Purpose
+      // Matching key: poRequirementId OR (PO No + Yarn Count + Purpose)
       let matchedRequirementId: string | null = null;
 
-      if (dto.poNumber && dto.poNumber.trim()) {
-        const cleanPo = dto.poNumber.trim();
-        const cleanCount = dto.count.trim();
-        const cleanPurpose = dto.purpose.trim().toUpperCase();
+      if (dto.poRequirementId || (dto.poNumber && dto.poNumber.trim())) {
+        let poReq: any = null;
 
-        // Check if there is an explicit PO Requirement line
-        const poReq = await tx.pORequirement.findFirst({
-          where: {
-            OR: [
-              {
-                poNumber: { equals: cleanPo, mode: 'insensitive' },
-                yarnCount: { equals: cleanCount, mode: 'insensitive' },
-                purpose: { equals: cleanPurpose, mode: 'insensitive' },
-              },
-              {
-                purchaseOrder: {
+        if (dto.poRequirementId) {
+          poReq = await tx.pORequirement.findUnique({
+            where: { id: dto.poRequirementId },
+            include: { purchaseOrder: true },
+          });
+        }
+
+        if (!poReq && dto.poNumber && dto.poNumber.trim()) {
+          const cleanPo = dto.poNumber.trim();
+          const cleanCount = dto.count.trim();
+          const cleanPurpose = dto.purpose.trim().toUpperCase();
+
+          poReq = await tx.pORequirement.findFirst({
+            where: {
+              OR: [
+                {
                   poNumber: { equals: cleanPo, mode: 'insensitive' },
+                  yarnCount: { equals: cleanCount, mode: 'insensitive' },
+                  purpose: { equals: cleanPurpose, mode: 'insensitive' },
                 },
-                yarnCount: { equals: cleanCount, mode: 'insensitive' },
-                purpose: { equals: cleanPurpose, mode: 'insensitive' },
-              },
-            ],
-          },
-          include: {
-            purchaseOrder: true,
-          },
-        });
+                {
+                  purchaseOrder: {
+                    poNumber: { equals: cleanPo, mode: 'insensitive' },
+                  },
+                  yarnCount: { equals: cleanCount, mode: 'insensitive' },
+                  purpose: { equals: cleanPurpose, mode: 'insensitive' },
+                },
+              ],
+            },
+            include: {
+              purchaseOrder: true,
+            },
+          });
+        }
 
         if (poReq) {
           matchedRequirementId = poReq.id;
@@ -385,19 +395,23 @@ export class InventoryService {
           const alreadyIssued = Number(poReq.issuedKg);
           const projectedTotal = alreadyIssued + dto.kilos;
 
-          if (projectedTotal > ceiling103) {
+          if (projectedTotal > ceiling103 + 0.0001) {
             const exceededBy = (projectedTotal - ceiling103).toFixed(2);
             throw new BadRequestException(
-              `PO 103% Requirement Rule Exceeded: Cannot issue ${dto.kilos.toFixed(2)} KG for PO "${cleanPo}", Count "${cleanCount}", Purpose "${cleanPurpose}". Required: ${reqKg.toFixed(2)} KG, 103% Ceiling: ${ceiling103.toFixed(2)} KG, Current Issued: ${alreadyIssued.toFixed(2)} KG. This issue would exceed the ceiling by ${exceededBy} KG.`,
+              `PO 103% Requirement Rule Exceeded: Cannot issue ${dto.kilos.toFixed(2)} KG for PO "${poReq.poNumber || dto.poNumber}", Count "${dto.count}", Purpose "${dto.purpose}". Required: ${reqKg.toFixed(2)} KG, 103% Ceiling: ${ceiling103.toFixed(2)} KG, Current Issued: ${alreadyIssued.toFixed(2)} KG. This issue would exceed the ceiling by ${exceededBy} KG.`,
             );
           }
 
-          // Update issued quantity on PO requirement
+          const newTotalIssued = Prisma.Decimal.add(poReq.issuedKg, kgDecimal);
+          const newStatus = Number(newTotalIssued) >= reqKg - 0.0001 ? 'COMPLETED' : 'PARTIAL';
+
+          // Update issued quantity and status on PO requirement
           await tx.pORequirement.update({
             where: { id: poReq.id },
             data: {
-              issuedKg: Prisma.Decimal.add(poReq.issuedKg, kgDecimal),
-            },
+              issuedKg: newTotalIssued,
+              status: newStatus,
+            } as any,
           });
         }
       }
