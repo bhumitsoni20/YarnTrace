@@ -96,8 +96,10 @@ enum DyeingMovementType {
 enum POStatus {
   DRAFT
   CONFIRMED
+  ACTIVE
   IN_PRODUCTION
   PARTIALLY_DELIVERED
+  PARTIALLY_FULFILLED
   FULFILLED
   CANCELLED
 }
@@ -720,12 +722,18 @@ model PORequirement {
   yarnId          String?
   yarn            Yarn?          @relation(fields: [yarnId], references: [id])
   yarnCount       String?        // Count e.g. "1/10 KW"
+  quality         String?        // e.g. "Cotton", "PC", "Modal"
+  size            String?        // e.g. "30x60", "30x30", "Medium"
+  useFor          String?        // e.g. "Bath Towel", "Face Towel"
   purpose         String?        // PILE, GROUND, WEFT, DYED, NPD, GENERAL
+  pcs             Int?           // Pieces count
+  qty             Decimal?       @db.Decimal(12, 4) // Quantity
   poNumber        String?
 
   requiredKg      Decimal        @db.Decimal(12, 4)
   issuedKg        Decimal        @default(0) @db.Decimal(12, 4)
   notes           String?
+  status          String?        @default("PENDING") // PENDING, PARTIAL, COMPLETED, N/A
 
   transactions    Transaction[]  @relation("RequirementTransactions")
 
@@ -737,6 +745,7 @@ model PORequirement {
   @@index([yarnCount])
   @@index([purpose])
   @@index([poNumber])
+  @@index([status])
 }
 
 model DyeingOrder {

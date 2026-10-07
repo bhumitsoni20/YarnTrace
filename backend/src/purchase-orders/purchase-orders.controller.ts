@@ -1,24 +1,216 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { PurchaseOrdersService } from './purchase-orders.service';
+import {
+  CreatePurchaseOrderDto,
+  CreatePORequirementDto,
+} from './dto/create-purchase-order.dto';
+import {
+  UpdatePurchaseOrderDto,
+  CancelPurchaseOrderDto,
+  PurchaseOrderFilterDto,
+} from './dto/update-purchase-order.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { RequirePermission } from '../common/decorators/permissions.decorator';
 
-@ApiTags('Purchase Orders')
+@ApiTags('Purchase Orders & Requirements')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('purchase-orders')
 export class PurchaseOrdersController {
   constructor(private readonly purchaseOrdersService: PurchaseOrdersService) {}
 
+  // ---------------------------------------------------------------------------
+  // 1. GET ALL PURCHASE ORDERS (WITH SERVER FILTERS & SUMMARY)
+  // ---------------------------------------------------------------------------
   @Get()
-  @RequirePermission('manage_purchase_orders')
-  @ApiOperation({ summary: 'Get all purchase orders with yarn requirements' })
-  async findAll() {
-    const data = await this.purchaseOrdersService.findAll();
+  @RequirePermission('manage_purchase_orders', 'purchase_orders.view', 'view_inventory')
+  @ApiOperation({
+    summary: 'Get all purchase orders with requirement lines and fulfillment metrics',
+  })
+  @ApiResponse({ status: 200, description: 'Purchase orders retrieved successfully' })
+  async findAll(@Query() filter: PurchaseOrderFilterDto) {
+    const data = await this.purchaseOrdersService.findAll(filter);
     return {
+      success: true,
       message: 'Purchase orders retrieved successfully',
+      data: data.purchaseOrders,
+      summary: data.summary,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2. GET ACTIVE REQUIREMENTS CATALOG (FOR INVENTORY ISSUE DROPDOWNS)
+  // ---------------------------------------------------------------------------
+  @Get('requirements')
+  @RequirePermission('manage_purchase_orders', 'purchase_orders.view', 'view_inventory')
+  @ApiOperation({
+    summary: 'Get active PO requirement lines with remaining balance and 103% ceiling for issue selection',
+  })
+  @ApiQuery({ name: 'poNumber', required: false, type: String })
+  @ApiQuery({ name: 'yarnCount', required: false, type: String })
+  @ApiQuery({ name: 'purpose', required: false, type: String })
+  @ApiQuery({ name: 'partyId', required: false, type: String })
+  async getRequirements(
+    @Query('poNumber') poNumber?: string,
+    @Query('yarnCount') yarnCount?: string,
+    @Query('purpose') purpose?: string,
+    @Query('partyId') partyId?: string,
+  ) {
+    const data = await this.purchaseOrdersService.getRequirements({
+      poNumber,
+      yarnCount,
+      purpose,
+      partyId,
+    });
+    return {
+      success: true,
+      message: 'PO Requirements catalog retrieved successfully',
+      data,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 3. GET SINGLE PURCHASE ORDER DETAIL
+  // ---------------------------------------------------------------------------
+  @Get(':id')
+  @RequirePermission('manage_purchase_orders', 'purchase_orders.view', 'view_inventory')
+  @ApiOperation({
+    summary: 'Get detailed purchase order by ID or PO Number including linked transaction history',
+  })
+  @ApiParam({ name: 'id', description: 'Purchase Order UUID or PO Number' })
+  async findById(@Param('id') id: string) {
+    const data = await this.purchaseOrdersService.findById(id);
+    return {
+      success: true,
+      message: 'Purchase order details retrieved successfully',
+      data,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 4. CREATE NEW PURCHASE ORDER WITH MULTIPLE REQUIREMENTS
+  // ---------------------------------------------------------------------------
+  @Post()
+  @RequirePermission('manage_purchase_orders', 'purchase_orders.create')
+  @ApiOperation({
+    summary: 'Create a new purchase order with multiple yarn requirement lines',
+  })
+  @ApiResponse({ status: 201, description: 'Purchase order created successfully' })
+  async create(
+    @Body() dto: CreatePurchaseOrderDto,
+    @Req() req: { user?: { id?: string } },
+  ) {
+    const data = await this.purchaseOrdersService.create(dto, req.user?.id);
+    return {
+      success: true,
+      message: `Purchase Order "${data.poNumber}" created successfully with ${data.requirementsCount} requirement lines`,
+      data,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 5. UPDATE PURCHASE ORDER HEADER & REQUIREMENTS
+  // ---------------------------------------------------------------------------
+  @Patch(':id')
+  @RequirePermission('manage_purchase_orders', 'purchase_orders.edit')
+  @ApiOperation({
+    summary: 'Update purchase order header and modify/add requirement lines',
+  })
+  @ApiParam({ name: 'id', description: 'Purchase Order UUID' })
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdatePurchaseOrderDto,
+    @Req() req: { user?: { id?: string } },
+  ) {
+    const data = await this.purchaseOrdersService.update(id, dto, req.user?.id);
+    return {
+      success: true,
+      message: `Purchase Order "${data.poNumber}" updated successfully`,
+      data,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 6. CANCEL PURCHASE ORDER (SOFT CANCELLATION)
+  // ---------------------------------------------------------------------------
+  @Post(':id/cancel')
+  @RequirePermission('manage_purchase_orders', 'purchase_orders.cancel')
+  @ApiOperation({
+    summary: 'Cancel a purchase order without hard-deleting historical records',
+  })
+  @ApiParam({ name: 'id', description: 'Purchase Order UUID' })
+  async cancel(
+    @Param('id') id: string,
+    @Body() dto: CancelPurchaseOrderDto,
+    @Req() req: { user?: { id?: string } },
+  ) {
+    const data = await this.purchaseOrdersService.cancel(id, dto, req.user?.id);
+    return {
+      success: true,
+      message: `Purchase Order "${data.poNumber}" has been cancelled`,
+      data,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 7. ADD REQUIREMENT LINE TO EXISTING PO
+  // ---------------------------------------------------------------------------
+  @Post(':id/requirements')
+  @RequirePermission('manage_purchase_orders', 'purchase_orders.manage_requirements')
+  @ApiOperation({
+    summary: 'Add an additional yarn requirement line to an existing purchase order',
+  })
+  @ApiParam({ name: 'id', description: 'Purchase Order UUID' })
+  async addRequirement(
+    @Param('id') id: string,
+    @Body() dto: CreatePORequirementDto,
+    @Req() req: { user?: { id?: string } },
+  ) {
+    const data = await this.purchaseOrdersService.addRequirement(
+      id,
+      dto,
+      req.user?.id,
+    );
+    return {
+      success: true,
+      message: `Requirement for count "${data.yarnCount}" (${data.purpose}) added successfully`,
+      data,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // 8. GET FULFILLMENT SUMMARY FOR A PO
+  // ---------------------------------------------------------------------------
+  @Get(':id/fulfillment')
+  @RequirePermission('manage_purchase_orders', 'purchase_orders.view')
+  @ApiOperation({
+    summary: 'Get requirement-wise fulfillment breakdown and progress for a PO',
+  })
+  @ApiParam({ name: 'id', description: 'Purchase Order UUID or PO Number' })
+  async getFulfillment(@Param('id') id: string) {
+    const data = await this.purchaseOrdersService.getFulfillment(id);
+    return {
+      success: true,
+      message: 'PO Fulfillment metrics retrieved successfully',
       data,
     };
   }
