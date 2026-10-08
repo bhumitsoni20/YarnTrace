@@ -592,24 +592,35 @@ model ProductionReturn {
 
 model ProductionOutput {
   id                String          @id @default(uuid())
+  batchNumber       String?         @unique // e.g. "OUT-2026-0001"
   productionOrderId String
   productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
   
+  productId         String?
+  product           Product?        @relation(fields: [productId], references: [id])
+
   productName       String
   productCode       String?
+  productType       String?         // "FABRIC_ROLL", "FINISHED_YARN", "MANUFACTURED_BATCH", "GARMENT"
   outputQuantityKg  Decimal         @db.Decimal(12, 4)
   unit              String          @default("KG")
+  status            String?         @default("PRODUCED") // "PRODUCED", "READY", "DELIVERED", "CANCELLED"
   outputDate        DateTime        @default(now())
   remarks           String?
   
   recordedById      String?
   recordedBy        User?           @relation("UserOutputs", fields: [recordedById], references: [id])
 
+  deliveries        Delivery[]
+
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
   @@index([productionOrderId])
+  @@index([productId])
+  @@index([batchNumber])
   @@index([outputDate])
+  @@index([status])
 }
 
 // =============================================================================
@@ -621,7 +632,7 @@ model Product {
   productCode       String           @unique
   name              String
   description       String?
-  category          String?          // "FABRIC_ROLL", "FINISHED_YARN", "GARMENT"
+  category          String?          // "FABRIC_ROLL", "FINISHED_YARN", "MANUFACTURED_BATCH", "GARMENT"
   
   productionOrderId String?
   productionOrder   ProductionOrder? @relation(fields: [productionOrderId], references: [id])
@@ -629,14 +640,18 @@ model Product {
   totalQuantityKg   Decimal          @db.Decimal(12, 4)
   availableKg       Decimal          @db.Decimal(12, 4)
   unit              String           @default("KG")
+  status            String?          @default("READY") // "DRAFT", "PRODUCED", "READY", "DELIVERED", "CANCELLED"
   isActive          Boolean          @default(true)
 
+  outputs           ProductionOutput[]
   deliveries        Delivery[]
 
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
   @@index([productCode])
+  @@index([category])
+  @@index([productionOrderId])
 }
 
 model Delivery {
@@ -644,8 +659,10 @@ model Delivery {
   deliveryNumber  String         @unique
   partyId         String
   party           Party          @relation(fields: [partyId], references: [id])
-  productId       String
-  product         Product        @relation(fields: [productId], references: [id])
+  productId       String?
+  product         Product?       @relation(fields: [productId], references: [id])
+  outputId        String?
+  productionOutput ProductionOutput? @relation(fields: [outputId], references: [id])
 
   dispatchedKg    Decimal        @db.Decimal(12, 4)
   status          DeliveryStatus @default(DRAFT)
@@ -661,6 +678,7 @@ model Delivery {
   @@index([deliveryNumber])
   @@index([partyId])
   @@index([productId])
+  @@index([outputId])
 }
 
 // =============================================================================

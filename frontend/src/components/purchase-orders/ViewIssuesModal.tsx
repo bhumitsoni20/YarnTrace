@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, ArrowUpRight, ExternalLink, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { PORequirement } from "../../types/purchase-order";
@@ -21,24 +22,44 @@ export default function ViewIssuesModal({
   poNumber,
 }: ViewIssuesModalProps) {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
 
-  if (!isOpen || !requirement) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
+
+  if (!isOpen || !mounted || !requirement) return null;
 
   const transactions = requirement.transactions || [];
   const totalIssued = transactions.reduce((sum, t) => sum + t.kilos, 0);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200 w-screen h-screen overflow-hidden">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-transparent"
         onClick={onClose}
       />
 
       {/* Modal Dialog */}
-      <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
+      <div
+        className="relative z-10 w-full max-w-2xl max-h-[90vh] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-6 py-4 shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20">
               <ArrowUpRight className="h-5 w-5" />
@@ -67,7 +88,7 @@ export default function ViewIssuesModal({
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-4">
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {/* KPI Mini Header */}
           <div className="grid grid-cols-3 gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
             <div>
@@ -168,7 +189,7 @@ export default function ViewIssuesModal({
           )}
 
           {/* Action links */}
-          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100 shrink-0">
             <button
               onClick={() => {
                 onClose();
@@ -185,6 +206,7 @@ export default function ViewIssuesModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

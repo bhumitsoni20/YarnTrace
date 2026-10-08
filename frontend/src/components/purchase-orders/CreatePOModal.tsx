@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   Plus,
@@ -68,6 +69,7 @@ export default function CreatePOModal({
   initialData,
 }: CreatePOModalProps) {
   const isEditing = !!initialData;
+  const [mounted, setMounted] = useState(false);
 
   const [poNumber, setPoNumber] = useState("");
   const [partyId, setPartyId] = useState("");
@@ -80,6 +82,22 @@ export default function CreatePOModal({
     { ...EMPTY_LINE },
   ]);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -100,23 +118,25 @@ export default function CreatePOModal({
           initialData.totalAmount ? initialData.totalAmount.toString() : ""
         );
         setRemarks(initialData.remarks || "");
-        setStatus(initialData.status as string);
-        setRequirements(
-          initialData.requirements.length > 0
-            ? initialData.requirements.map((r) => ({
-                id: r.id,
-                yarnCount: r.yarnCount,
-                quality: r.quality || "",
-                size: r.size || "",
-                useFor: r.useFor || "",
-                purpose: r.purpose || "PILE",
-                pcs: r.pcs || undefined,
-                qty: r.qty || undefined,
-                requiredKg: r.requiredKg,
-                notes: r.notes || "",
-              }))
-            : [{ ...EMPTY_LINE }]
-        );
+        setStatus(initialData.status);
+        if (initialData.requirements && initialData.requirements.length > 0) {
+          setRequirements(
+            initialData.requirements.map((r) => ({
+              id: r.id,
+              yarnCount: r.yarnCount,
+              quality: r.quality || "",
+              size: r.size || "",
+              useFor: r.useFor || "",
+              purpose: r.purpose || "PILE",
+              pcs: r.pcs != null ? Number(r.pcs) : undefined,
+              qty: r.qty != null ? Number(r.qty) : undefined,
+              requiredKg: r.requiredKg,
+              notes: r.notes || "",
+            }))
+          );
+        } else {
+          setRequirements([{ ...EMPTY_LINE }]);
+        }
       } else {
         setPoNumber("");
         setPartyId("");
@@ -129,49 +149,33 @@ export default function CreatePOModal({
       }
       setError(null);
     }
-  }, [isOpen, initialData, parties]);
+  }, [isOpen, initialData]);
 
-  if (!isOpen) return null;
-
-  // Add line
+  // Requirement line helpers
   const handleAddLine = () => {
-    const nextPurpose =
-      PURPOSES[requirements.length % PURPOSES.length] || "PILE";
-    setRequirements((prev) => [
-      ...prev,
-      {
-        ...EMPTY_LINE,
-        purpose: nextPurpose,
-      },
-    ]);
+    setRequirements((prev) => [...prev, { ...EMPTY_LINE }]);
   };
 
-  // Remove line
   const handleRemoveLine = (index: number) => {
-    if (requirements.length <= 1) {
-      setError("A Purchase Order must contain at least one requirement line.");
+    if (requirements.length === 1) {
+      setRequirements([{ ...EMPTY_LINE }]);
       return;
     }
-    setRequirements((prev) => prev.filter((_, idx) => idx !== index));
+    setRequirements((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Update line
   const handleLineChange = (
     index: number,
     field: keyof CreatePORequirementInput,
-    val: unknown
+    value: string | number | undefined
   ) => {
-    setRequirements((prev) =>
-      prev.map((line, idx) => {
-        if (idx === index) {
-          return { ...line, [field]: val };
-        }
-        return line;
-      })
-    );
+    setRequirements((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
   };
 
-  // Total required sum preview
   const totalRequiredSum = requirements.reduce(
     (sum, r) => sum + (Number(r.requiredKg) || 0),
     0
@@ -182,7 +186,7 @@ export default function CreatePOModal({
     setError(null);
 
     if (!poNumber.trim()) {
-      setError("Please enter a valid Purchase Order Number.");
+      setError("Purchase Order Number is required.");
       return;
     }
 
@@ -249,18 +253,23 @@ export default function CreatePOModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+  if (!isOpen || !mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200 w-screen h-screen overflow-hidden">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-transparent"
         onClick={onClose}
       />
 
       {/* Modal Dialog */}
-      <div className="relative w-full max-w-5xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden z-10 my-8 animate-in fade-in zoom-in-95 duration-200">
+      <div
+        className="relative z-10 w-full max-w-5xl max-h-[92vh] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-6 py-4 shrink-0">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-white shadow-md shadow-brand-500/20">
               <ShoppingCart className="h-5 w-5" />
@@ -283,7 +292,7 @@ export default function CreatePOModal({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
           {error && (
             <div className="flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 animate-in fade-in">
               <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
@@ -326,10 +335,10 @@ export default function CreatePOModal({
                   id="partyId"
                   value={partyId}
                   onChange={(e) => setPartyId(e.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600 shadow-sm"
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 focus:border-brand-600 focus:outline-none focus:ring-1 focus:ring-brand-600"
                   required
                 >
-                  <option value="">-- Select Customer / Buyer --</option>
+                  <option value="">Select Party from Master...</option>
                   {parties.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name} ({p.code})
@@ -370,10 +379,8 @@ export default function CreatePOModal({
                   />
                 </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
-              {/* Commercial Amount */}
+              {/* Commercial Value (INR) */}
               <div>
                 <Label htmlFor="totalAmount" className="text-xs">
                   Total Commercial Amount (INR)
@@ -385,13 +392,13 @@ export default function CreatePOModal({
                   min="0"
                   value={totalAmount}
                   onChange={(e) => setTotalAmount(e.target.value)}
-                  placeholder="Optional total INR"
-                  className="mt-1 text-xs"
+                  placeholder="0.00"
+                  className="mt-1 font-mono text-xs"
                 />
               </div>
 
               {/* Remarks */}
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-2 lg:col-span-3">
                 <Label htmlFor="remarks" className="text-xs">
                   Order Remarks / Customer Notes
                 </Label>
@@ -418,59 +425,62 @@ export default function CreatePOModal({
                 variant="outline"
                 size="sm"
                 onClick={handleAddLine}
-                className="gap-1 text-xs text-brand-700 bg-brand-50/50 hover:bg-brand-100/60 border-brand-200 h-8"
+                className="gap-1 text-xs border-brand-200 text-brand-700 hover:bg-brand-50"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>Add Requirement Line</span>
               </Button>
             </div>
 
+            {/* Excel-like Tabular Grid */}
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 uppercase tracking-wider text-[10px]">
-                  <tr>
-                    <th className="py-2.5 px-3 w-12 text-center">#</th>
-                    <th className="py-2.5 px-3 min-w-[140px]">Yarn Count *</th>
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                    <th className="py-2.5 px-2 text-center w-8">#</th>
+                    <th className="py-2.5 px-3 min-w-[140px]">
+                      Yarn Count <span className="text-red-500">*</span>
+                    </th>
                     <th className="py-2.5 px-2 min-w-[100px]">Quality</th>
                     <th className="py-2.5 px-2 min-w-[90px]">Size</th>
-                    <th className="py-2.5 px-2 min-w-[110px]">Use For</th>
-                    <th className="py-2.5 px-2 min-w-[110px]">Purpose *</th>
-                    <th className="py-2.5 px-2 min-w-[80px]">Pcs</th>
-                    <th className="py-2.5 px-2 min-w-[80px]">Qty</th>
-                    <th className="py-2.5 px-3 min-w-[120px] text-right">
-                      Req KG *
+                    <th className="py-2.5 px-2 min-w-[90px]">Use For</th>
+                    <th className="py-2.5 px-2 min-w-[100px]">
+                      Purpose <span className="text-red-500">*</span>
+                    </th>
+                    <th className="py-2.5 px-2 min-w-[65px] text-right">Pcs</th>
+                    <th className="py-2.5 px-2 min-w-[65px] text-right">Qty</th>
+                    <th className="py-2.5 px-2 min-w-[110px] text-right">
+                      Req KG <span className="text-red-500">*</span>
                     </th>
                     <th className="py-2.5 px-2 min-w-[130px]">Notes</th>
-                    <th className="py-2.5 px-2 w-10 text-center"></th>
+                    <th className="py-2.5 px-2 text-center w-8"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                <tbody className="divide-y divide-slate-100">
                   {requirements.map((line, idx) => (
                     <tr key={idx} className="hover:bg-slate-50/50">
-                      <td className="py-2 px-3 text-center text-slate-400 font-mono">
+                      <td className="py-2 px-2 text-center font-mono text-slate-400 text-[11px]">
                         {idx + 1}
                       </td>
 
-                      {/* Yarn Count */}
-                      <td className="py-2 px-3">
-                        <div className="relative">
-                          <input
-                            type="text"
-                            list={`counts-list-${idx}`}
-                            value={line.yarnCount}
-                            onChange={(e) =>
-                              handleLineChange(idx, "yarnCount", e.target.value)
-                            }
-                            placeholder="e.g. 1/10 KW"
-                            className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-900 focus:border-brand-600 focus:outline-none"
-                            required
-                          />
-                          <datalist id={`counts-list-${idx}`}>
-                            {COMMON_COUNTS.map((c) => (
-                              <option key={c} value={c} />
-                            ))}
-                          </datalist>
-                        </div>
+                      {/* Yarn Count with Datalist */}
+                      <td className="py-2 px-2">
+                        <input
+                          type="text"
+                          list={`yarnCounts-${idx}`}
+                          value={line.yarnCount}
+                          onChange={(e) =>
+                            handleLineChange(idx, "yarnCount", e.target.value)
+                          }
+                          placeholder="e.g. 1/10 KW"
+                          className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs font-mono font-medium text-slate-900 focus:border-brand-600 focus:outline-none"
+                          required
+                        />
+                        <datalist id={`yarnCounts-${idx}`}>
+                          {COMMON_COUNTS.map((c) => (
+                            <option key={c} value={c} />
+                          ))}
+                        </datalist>
                       </td>
 
                       {/* Quality */}
@@ -481,7 +491,7 @@ export default function CreatePOModal({
                           onChange={(e) =>
                             handleLineChange(idx, "quality", e.target.value)
                           }
-                          placeholder="e.g. Cotton"
+                          placeholder="e.g. 100% Cotton"
                           className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-800 focus:border-brand-600 focus:outline-none"
                         />
                       </td>
@@ -507,7 +517,7 @@ export default function CreatePOModal({
                           onChange={(e) =>
                             handleLineChange(idx, "useFor", e.target.value)
                           }
-                          placeholder="e.g. Bath Towel"
+                          placeholder="e.g. Towel Bath"
                           className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-800 focus:border-brand-600 focus:outline-none"
                         />
                       </td>
@@ -519,7 +529,7 @@ export default function CreatePOModal({
                           onChange={(e) =>
                             handleLineChange(idx, "purpose", e.target.value)
                           }
-                          className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs font-bold text-slate-800 focus:border-brand-600 focus:outline-none bg-white"
+                          className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-800 focus:border-brand-600 focus:outline-none"
                           required
                         >
                           {PURPOSES.map((p) => (
@@ -534,6 +544,7 @@ export default function CreatePOModal({
                       <td className="py-2 px-2">
                         <input
                           type="number"
+                          step="1"
                           min="0"
                           value={line.pcs ?? ""}
                           onChange={(e) =>
@@ -543,8 +554,8 @@ export default function CreatePOModal({
                               e.target.value ? Number(e.target.value) : undefined
                             )
                           }
-                          placeholder="0"
-                          className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs font-mono text-slate-800 focus:border-brand-600 focus:outline-none"
+                          placeholder="-"
+                          className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs font-mono text-right text-slate-800 focus:border-brand-600 focus:outline-none"
                         />
                       </td>
 
@@ -552,6 +563,7 @@ export default function CreatePOModal({
                       <td className="py-2 px-2">
                         <input
                           type="number"
+                          step="1"
                           min="0"
                           value={line.qty ?? ""}
                           onChange={(e) =>
@@ -561,16 +573,16 @@ export default function CreatePOModal({
                               e.target.value ? Number(e.target.value) : undefined
                             )
                           }
-                          placeholder="0"
-                          className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs font-mono text-slate-800 focus:border-brand-600 focus:outline-none"
+                          placeholder="-"
+                          className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs font-mono text-right text-slate-800 focus:border-brand-600 focus:outline-none"
                         />
                       </td>
 
                       {/* Required KG */}
-                      <td className="py-2 px-3 text-right">
+                      <td className="py-2 px-2">
                         <input
                           type="number"
-                          step="0.01"
+                          step="0.0001"
                           min="0.0001"
                           value={line.requiredKg || ""}
                           onChange={(e) =>
@@ -631,7 +643,7 @@ export default function CreatePOModal({
           </div>
 
           {/* Footer Controls */}
-          <div className="flex items-center justify-between border-t border-slate-200 pt-4">
+          <div className="flex items-center justify-between border-t border-slate-200 pt-4 shrink-0">
             <div className="text-xs text-slate-500">
               * Required fields. 103% issue ceiling rule will be automatically
               enforced by the backend.
@@ -660,6 +672,7 @@ export default function CreatePOModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
