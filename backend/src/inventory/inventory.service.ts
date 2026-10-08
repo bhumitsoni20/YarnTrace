@@ -1173,38 +1173,34 @@ export class InventoryService {
       include: {
         supplier: true,
         parentLot: true,
-        transactions: {
-          select: {
-            type: true,
-            kilos: true,
-            bags: true,
-          },
-        },
       },
       orderBy: { receivedDate: 'desc' },
     });
 
-    return lots.map((lot) => {
-      let totalInKg = 0;
-      let totalIssuedKg = 0;
-      let totalReturnedKg = 0;
-      let totalRetiredKg = 0;
-      let totalSoldKg = 0;
+    const lotIds = lots.map((l) => l.id);
+    const aggregates = lotIds.length > 0 ? await this.prisma.transaction.groupBy({
+      by: ['lotId', 'type'],
+      where: { lotId: { in: lotIds } },
+      _sum: { kilos: true },
+    }) : [];
 
-      for (const t of lot.transactions) {
-        const kg = Number(t.kilos);
-        if (t.type === TransactionType.OPENING || t.type === TransactionType.RECEIVED) {
-          totalInKg += kg;
-        } else if (t.type === TransactionType.ISSUED) {
-          totalIssuedKg += kg;
-        } else if (t.type === TransactionType.RETURN) {
-          totalReturnedKg += kg;
-        } else if (t.type === TransactionType.RETIRED) {
-          totalRetiredKg += kg;
-        } else if (t.type === TransactionType.SOLD) {
-          totalSoldKg += kg;
+    const aggMap = new Map<string, Record<string, number>>();
+    for (const agg of aggregates) {
+      if (agg.lotId) {
+        if (!aggMap.has(agg.lotId)) {
+          aggMap.set(agg.lotId, {});
         }
+        aggMap.get(agg.lotId)![agg.type] = Number(agg._sum.kilos || 0);
       }
+    }
+
+    return lots.map((lot) => {
+      const lotAgg = aggMap.get(lot.id) || {};
+      const totalInKg = (lotAgg[TransactionType.OPENING] || 0) + (lotAgg[TransactionType.RECEIVED] || 0);
+      const totalIssuedKg = lotAgg[TransactionType.ISSUED] || 0;
+      const totalReturnedKg = lotAgg[TransactionType.RETURN] || 0;
+      const totalRetiredKg = lotAgg[TransactionType.RETIRED] || 0;
+      const totalSoldKg = lotAgg[TransactionType.SOLD] || 0;
 
       return {
         id: lot.id,
