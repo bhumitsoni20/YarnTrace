@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, AlertTriangle, XCircle } from "lucide-react";
 import { Button } from "../ui/button";
 import { Label } from "../ui/label";
@@ -21,10 +22,27 @@ export default function CancelPOModal({
   po,
   isLoading,
 }: CancelPOModalProps) {
+  const [mounted, setMounted] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  if (!isOpen || !po) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
+
+  if (!isOpen || !mounted || !po) return null;
 
   const handleConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,16 +57,19 @@ export default function CancelPOModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200 w-screen h-screen overflow-hidden">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-transparent"
         onClick={onClose}
       />
 
       {/* Modal Dialog */}
-      <div className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
+      <div
+        className="relative z-10 w-full max-w-md rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-slate-200 bg-red-50/50 px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-100 text-red-600">
@@ -126,6 +147,7 @@ export default function CancelPOModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
