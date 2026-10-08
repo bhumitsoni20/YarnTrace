@@ -1,7 +1,15 @@
+import * as dotenv from 'dotenv';
+dotenv.config();
 import { PrismaClient, UserStatus, YarnType, LotStatus, PartyType } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DIRECT_URL || process.env.DATABASE_URL,
+    },
+  },
+});
 
 async function main() {
   console.log('🌱 Seeding YarnTrace foundation data...');

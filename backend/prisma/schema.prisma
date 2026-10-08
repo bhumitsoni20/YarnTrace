@@ -149,7 +149,6 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  @@index([email])
   @@index([roleId])
 }
 
@@ -166,7 +165,6 @@ model Role {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@index([code])
 }
 
 model Permission {
@@ -182,7 +180,6 @@ model Permission {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@index([key])
   @@index([module])
 }
 
@@ -232,7 +229,6 @@ model Yarn {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  @@index([code])
   @@index([type])
   @@index([yarnCount])
 }
@@ -274,7 +270,6 @@ model Lot {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  @@index([lotNumber])
   @@index([yarnId])
   @@index([yarnCount])
   @@index([supplierId])
@@ -304,7 +299,6 @@ model StockLocation {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@index([code])
 }
 
 model StockBalance {
@@ -366,7 +360,6 @@ model Transaction {
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
 
-  @@index([transactionNumber])
   @@index([type])
   @@index([transactionDate])
   @@index([yarnCount])
@@ -426,7 +419,6 @@ model ProductionTeam {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@index([code])
   @@index([department])
   @@index([isActive])
 }
@@ -466,7 +458,6 @@ model ProductionOrder {
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
 
-  @@index([orderNumber])
   @@index([status])
   @@index([partyId])
   @@index([productionTeamId])
@@ -618,7 +609,6 @@ model ProductionOutput {
 
   @@index([productionOrderId])
   @@index([productId])
-  @@index([batchNumber])
   @@index([outputDate])
   @@index([status])
 }
@@ -649,7 +639,6 @@ model Product {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
-  @@index([productCode])
   @@index([category])
   @@index([productionOrderId])
 }
@@ -675,7 +664,6 @@ model Delivery {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  @@index([deliveryNumber])
   @@index([partyId])
   @@index([productId])
   @@index([outputId])
@@ -707,7 +695,6 @@ model Party {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  @@index([code])
   @@index([type])
   @@index([isActive])
   @@index([name])
@@ -729,7 +716,6 @@ model PurchaseOrder {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
-  @@index([poNumber])
   @@index([partyId])
 }
 
@@ -783,7 +769,6 @@ model DyeingOrder {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
-  @@index([orderNumber])
   @@index([dyeingMillId])
 }
 
