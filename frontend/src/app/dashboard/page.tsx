@@ -42,10 +42,10 @@ import { apiClient } from "../../lib/axios";
 import { DashboardOverview } from "../../types/dashboard";
 import { Party, LotRecord, PORequirementOption } from "../../types/inventory";
 
-// Inventory Modals for Quick Actions
-import OpeningStockModal from "../../components/inventory/OpeningStockModal";
-import ReceiveStockModal from "../../components/inventory/ReceiveStockModal";
-import IssueStockModal from "../../components/inventory/IssueStockModal";
+import dynamic from "next/dynamic";
+const OpeningStockModal = dynamic(() => import("../../components/inventory/OpeningStockModal"), { ssr: false });
+const ReceiveStockModal = dynamic(() => import("../../components/inventory/ReceiveStockModal"), { ssr: false });
+const IssueStockModal = dynamic(() => import("../../components/inventory/IssueStockModal"), { ssr: false });
 
 export default function DashboardPage() {
   const router = useRouter();

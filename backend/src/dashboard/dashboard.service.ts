@@ -46,12 +46,21 @@ export interface DashboardOverviewResponse {
 
 @Injectable()
 export class DashboardService {
+  private cachedOverview: DashboardOverviewResponse | null = null;
+  private cacheTimestamp: number = 0;
+  private readonly CACHE_TTL = 15000; // 15 seconds
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventoryService: InventoryService,
   ) {}
 
   async getOverview(): Promise<DashboardOverviewResponse> {
+    const now = Date.now();
+    if (this.cachedOverview && now - this.cacheTimestamp < this.CACHE_TTL) {
+      return this.cachedOverview;
+    }
+
     // Parallel PostgreSQL Aggregations for Total Stock, Received, Issued, POs, Production, and Live Lots
     const [
       stockSummary,
@@ -259,7 +268,7 @@ export class DashboardService {
       createdByEmail: tx.createdBy?.email || null,
     }));
 
-    return {
+    const result: DashboardOverviewResponse = {
       totalStockKg: stockSummary.totalWeightKg,
       totalStockBags: stockSummary.totalBags,
       receivedKg: Number((Number(receivedAgg._sum.kilos || 0)).toFixed(4)),
@@ -277,5 +286,10 @@ export class DashboardService {
       liveLots,
       recentMovements,
     };
+
+    this.cachedOverview = result;
+    this.cacheTimestamp = now;
+
+    return result;
   }
 }
