@@ -4,7 +4,7 @@
   "description": "YarnTrace — Yarn Inventory & Production Traceability Backend API",
   "private": true,
   "scripts": {
-    "clean": "rm -rf dist tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo",
+    "clean": "node -e \"const fs = require('fs'); ['dist', 'tsconfig.tsbuildinfo', 'tsconfig.build.tsbuildinfo'].forEach(p => fs.existsSync(p) && fs.rmSync(p, { recursive: true, force: true }));\"",
     "prebuild": "npm run clean",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
