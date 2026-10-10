@@ -268,15 +268,12 @@ h1, h2, h3, h4, h5, h6 {
   footer,
   button,
   .print\:hidden,
-  [role="dialog"] > div:first-child,
   [class*="backdrop-blur"],
   [class*="bg-slate-950"] {
     display: none !important;
   }
 
   /* Reset modal containers so they don't center or clip on printed page */
-  [data-radix-portal],
-  [data-radix-portal] > div,
   .fixed,
   .modal-enter,
   [role="dialog"] {
@@ -293,11 +290,6 @@ h1, h2, h3, h4, h5, h6 {
     background: transparent !important;
     box-shadow: none !important;
     border: none !important;
-  }
-
-  /* Hide everything in body except the printable slip */
-  body > *:not([data-radix-portal]) {
-    display: none !important;
   }
 
   #yarn-slip-printable {
