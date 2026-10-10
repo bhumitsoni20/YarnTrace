@@ -40,13 +40,117 @@ export default function YarnSlipModal({
   if (!transaction) return null;
 
   const handlePrint = () => {
-    // Set document title so exported PDF default filename is neat
-    const originalTitle = document.title;
-    document.title = `YarnTrace-Slip-${transaction.transactionNumber}`;
-    window.print();
-    setTimeout(() => {
-      document.title = originalTitle;
-    }, 1000);
+    const printElement = document.getElementById("yarn-slip-printable");
+    if (!printElement) {
+      window.print();
+      return;
+    }
+
+    try {
+      // Remove any existing print iframe
+      let iframe = document.getElementById(
+        "yarn-slip-print-iframe"
+      ) as HTMLIFrameElement | null;
+      if (iframe) {
+        iframe.remove();
+      }
+
+      // Create an isolated hidden iframe
+      iframe = document.createElement("iframe");
+      iframe.id = "yarn-slip-print-iframe";
+      iframe.style.position = "fixed";
+      iframe.style.top = "0";
+      iframe.style.left = "-9999px";
+      iframe.style.width = "800px";
+      iframe.style.height = "1000px";
+      iframe.style.border = "none";
+      iframe.style.zIndex = "-1000";
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow?.document || iframe.contentDocument;
+      if (!doc) {
+        window.print();
+        return;
+      }
+
+      // Collect all stylesheets from the document
+      const styleSheets = Array.from(
+        document.querySelectorAll("link[rel='stylesheet'], style")
+      )
+        .map((el) => el.outerHTML)
+        .join("\n");
+
+      doc.open();
+      doc.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>YarnTrace-Slip-${transaction.transactionNumber}</title>
+            ${styleSheets}
+            <style>
+              @page {
+                size: A4 portrait;
+                margin: 10mm 12mm;
+              }
+              *, *::before, *::after {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color-adjust: exact !important;
+                box-sizing: border-box;
+              }
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background-color: #ffffff !important;
+                color: #0f172a !important;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              }
+              #yarn-slip-printable {
+                width: 100% !important;
+                max-width: 780px !important;
+                margin: 0 auto !important;
+                border: 1.5px solid #cbd5e1 !important;
+                border-radius: 12px !important;
+                overflow: visible !important;
+                background: #ffffff !important;
+              }
+              /* Explicit background colors so printer drivers render them accurately */
+              .bg-orange-600 { background-color: #ea580c !important; color: #ffffff !important; }
+              .bg-emerald-700 { background-color: #047857 !important; color: #ffffff !important; }
+              .bg-sky-700 { background-color: #0369a1 !important; color: #ffffff !important; }
+              .bg-blue-700 { background-color: #1d4ed8 !important; color: #ffffff !important; }
+              .bg-rose-700 { background-color: #be123c !important; color: #ffffff !important; }
+              .bg-purple-700 { background-color: #7e22ce !important; color: #ffffff !important; }
+              .bg-slate-800 { background-color: #1e293b !important; color: #ffffff !important; }
+            </style>
+          </head>
+          <body>
+            <div style="padding: 8px;">
+              ${printElement.outerHTML}
+            </div>
+          </body>
+        </html>
+      `);
+      doc.close();
+
+      setTimeout(() => {
+        if (!iframe?.contentWindow) {
+          window.print();
+          return;
+        }
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        setTimeout(() => {
+          if (iframe && document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+        }, 1500);
+      }, 250);
+    } catch (err) {
+      console.error("Print iframe fallback to window.print:", err);
+      window.print();
+    }
   };
 
   const handleCopy = async () => {
