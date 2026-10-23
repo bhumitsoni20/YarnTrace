@@ -22,9 +22,11 @@ import {
   X,
   ShieldAlert,
   ChevronDown,
+  Loader2,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
 import {
   Dialog,
@@ -184,7 +186,9 @@ export default function StockKanbanBoard({
     },
     staleTime: 30_000,
   });
-  const orders: ProductionOrder[] = ordersResponse?.items || [];
+  const orders: ProductionOrder[] = Array.isArray(ordersResponse)
+    ? ordersResponse
+    : ordersResponse?.data || ordersResponse?.items || [];
 
   // Eligible Issues
   const { data: eligibleIssues = [], refetch: refetchIssues } = useQuery({
@@ -205,6 +209,48 @@ export default function StockKanbanBoard({
     },
     staleTime: 60_000,
   });
+
+  // Production Teams Master
+  const { data: teams = [] } = useQuery<ProductionTeam[]>({
+    queryKey: ["production", "teams"],
+    queryFn: async () => {
+      const res = await apiClient.get("/production/teams");
+      return res.data.data || [];
+    },
+    staleTime: 60_000,
+  });
+
+  // Assign Issued Stock to Work Order State
+  const [assignOrderDialog, setAssignOrderDialog] = useState<KanbanItem | null>(null);
+  const [selectedOrderIdForAssign, setSelectedOrderIdForAssign] = useState<string>("");
+  const [selectedTeamIdForAssign, setSelectedTeamIdForAssign] = useState<string>("");
+  const [assignKg, setAssignKg] = useState<string>("");
+  const [assignBags, setAssignBags] = useState<string>("");
+  const [assignNotes, setAssignNotes] = useState<string>("");
+
+  const openAssignOrderModal = (item: KanbanItem) => {
+    setAssignOrderDialog(item);
+    setAssignKg(String(item.weightKg));
+    setAssignBags(String(item.bagsCount || 0));
+    setAssignNotes("");
+
+    const activeOrders = orders.filter(
+      (o) => o.status === "PLANNED" || o.status === "IN_PROGRESS" || o.status === "DRAFT"
+    );
+    if (activeOrders.length > 0) {
+      setSelectedOrderIdForAssign(activeOrders[0].id);
+      if (activeOrders[0].productionTeam?.id) {
+        setSelectedTeamIdForAssign(activeOrders[0].productionTeam.id);
+      } else if (teams.length > 0) {
+        setSelectedTeamIdForAssign(teams[0].id);
+      }
+    } else {
+      setSelectedOrderIdForAssign("");
+      if (teams.length > 0) {
+        setSelectedTeamIdForAssign(teams[0].id);
+      }
+    }
+  };
 
   const refetchAll = () => {
     refetchLots();
@@ -247,6 +293,36 @@ export default function StockKanbanBoard({
     },
   });
 
+  const assignWorkOrderMutation = useMutation({
+    mutationFn: async ({
+      orderId,
+      payload,
+    }: {
+      orderId: string;
+      payload: {
+        inventoryTransactionId: string;
+        productionTeamId: string;
+        allocatedKg: number;
+        bags?: number;
+        remarks?: string;
+      };
+    }) => {
+      const res = await apiClient.post(`/production/orders/${orderId}/allocations`, payload);
+      return res.data;
+    },
+    onSuccess: () => {
+      refetchAll();
+      queryClient.invalidateQueries({ queryKey: ["production"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      onShowToast("success", "Yarn successfully assigned to Work Order!");
+      setAssignOrderDialog(null);
+    },
+    onError: (err: any) => {
+      onShowToast("error", err?.response?.data?.message || "Failed to assign yarn to work order.");
+    },
+  });
+
   // ---------------------------------------------------------------------------
   // 3. TRANSFORM ALL RECORDS INTO UNIFIED KANBAN ITEMS
   // ---------------------------------------------------------------------------
@@ -272,7 +348,7 @@ export default function StockKanbanBoard({
         id: `lot-${lot.id}`,
         type: "LOT",
         referenceNumber: lot.lotNumber,
-        title: lot.count || "Yarn Stock",
+        title: lot.count || lot.yarnCount || "Yarn Stock",
         subtitle: lot.party?.name ? `Supplier: ${lot.party.name}` : undefined,
         lotNumber: lot.lotNumber,
         weightKg: currentKg,
@@ -287,17 +363,24 @@ export default function StockKanbanBoard({
 
     // Map Eligible Issued Transactions to Pending Allocation
     eligibleIssues.forEach((issue: any) => {
+      const yarnCountLabel =
+        issue.yarnCount ||
+        issue.count ||
+        issue.lot?.yarnCount ||
+        issue.rawPayload?.yarnCount ||
+        "Yarn Stock";
+
       items.push({
         id: `issue-${issue.id}`,
         type: "ISSUE",
         referenceNumber: issue.transactionNumber || `ISSUE-${issue.lotNumber}`,
-        title: `${issue.count} (Pending Assign)`,
-        subtitle: `Lot: ${issue.lotNumber}`,
-        lotNumber: issue.lotNumber,
-        weightKg: Number(issue.unallocatedKg || issue.kilos || 0),
-        bagsCount: issue.bags,
+        title: `${yarnCountLabel} (Pending Assign)`,
+        subtitle: `Lot: ${issue.lotNumber || issue.lot?.lotNumber || "—"}`,
+        lotNumber: issue.lotNumber || issue.lot?.lotNumber,
+        weightKg: Number(issue.unallocatedKg ?? issue.kilos ?? issue.totalIssuedKg ?? 0),
+        bagsCount: issue.issuedBags ?? issue.bags ?? 0,
         locationOrDepartment: issue.purpose || "Floor Stage",
-        assignedTo: issue.party?.name || null,
+        assignedTo: issue.partyName || issue.party?.name || null,
         stageId: "pending_allocation",
         status: "ISSUED",
         rawPayload: issue,
@@ -481,12 +564,14 @@ export default function StockKanbanBoard({
 
     // Execute context-specific transition confirmation
     if (targetStageId === "allocated_production") {
-      // Transition to Allocated to Production -> Open Allocate Modal with prefilled lot!
+      // Transition to Allocated to Production
       if (draggedItem.type === "LOT") {
         setPreselectedLotForAllocate(draggedItem.rawPayload as LotRecord);
         setIsAllocateModalOpen(true);
+      } else if (draggedItem.type === "ISSUE") {
+        openAssignOrderModal(draggedItem);
       } else {
-        onShowToast("error", "Only available yarn lots can be allocated to production.");
+        onShowToast("error", "Only available yarn lots or issued pending lots can be allocated to production.");
       }
     } else if (targetStageId === "in_production") {
       // Transition to In Production -> Start Order confirmation
@@ -516,6 +601,8 @@ export default function StockKanbanBoard({
         setPreselectedLotForAllocate(item.rawPayload as LotRecord);
       }
       setIsAllocateModalOpen(true);
+    } else if (actionType === "assign_order") {
+      openAssignOrderModal(item);
     } else if (actionType === "start_order") {
       setStartOrderDialog(item);
     } else if (actionType === "complete_order") {
@@ -699,6 +786,198 @@ export default function StockKanbanBoard({
         </Dialog>
       )}
 
+      {/* Assign Issued Stock to Work Order Modal */}
+      {assignOrderDialog && (
+        <Dialog open={!!assignOrderDialog} onOpenChange={() => setAssignOrderDialog(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-slate-900 font-bold">
+                <Factory className="h-5 w-5 text-amber-600" />
+                <span>Assign Yarn to Work Order</span>
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-500">
+                Link issued stock transaction{" "}
+                <strong className="text-slate-800">{assignOrderDialog.referenceNumber}</strong> to an active production order.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!selectedOrderIdForAssign) {
+                  onShowToast("error", "Please select a production work order.");
+                  return;
+                }
+                if (!selectedTeamIdForAssign) {
+                  onShowToast("error", "Please select a production team.");
+                  return;
+                }
+                const kg = parseFloat(assignKg);
+                if (isNaN(kg) || kg <= 0) {
+                  onShowToast("error", "Allocated KG must be greater than 0.");
+                  return;
+                }
+                if (kg > assignOrderDialog.weightKg + 0.01) {
+                  onShowToast("error", `Cannot allocate more than available unallocated weight (${assignOrderDialog.weightKg} KG).`);
+                  return;
+                }
+
+                const rawIssue = assignOrderDialog.rawPayload;
+                assignWorkOrderMutation.mutate({
+                  orderId: selectedOrderIdForAssign,
+                  payload: {
+                    inventoryTransactionId: rawIssue.id,
+                    productionTeamId: selectedTeamIdForAssign,
+                    allocatedKg: kg,
+                    bags: parseInt(assignBags, 10) || 0,
+                    remarks: assignNotes || `Allocated from ${assignOrderDialog.referenceNumber}`,
+                  },
+                });
+              }}
+              className="space-y-3.5 my-2 text-xs"
+            >
+              {/* Issued Stock Summary Card */}
+              <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-200/80 space-y-1.5">
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Source Issue Record:</span>
+                  <span className="font-mono font-bold text-slate-900">{assignOrderDialog.referenceNumber}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span>Yarn Count & Lot:</span>
+                  <span className="font-semibold text-slate-800">{assignOrderDialog.title} | {assignOrderDialog.lotNumber}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1 border-t border-amber-200 text-amber-900 font-semibold">
+                  <span>Available to Allocate:</span>
+                  <span className="font-mono">{assignOrderDialog.weightKg.toLocaleString()} KG ({assignOrderDialog.bagsCount || 0} bags)</span>
+                </div>
+              </div>
+
+              {/* Target Production Order */}
+              <div>
+                <Label htmlFor="assign-order-select" className="text-xs font-semibold text-slate-700 mb-1 block">
+                  Select Production Work Order <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  id="assign-order-select"
+                  value={selectedOrderIdForAssign}
+                  onChange={(e) => {
+                    const orderId = e.target.value;
+                    setSelectedOrderIdForAssign(orderId);
+                    const found = orders.find((o) => o.id === orderId);
+                    if (found?.productionTeam?.id) {
+                      setSelectedTeamIdForAssign(found.productionTeam.id);
+                    }
+                  }}
+                  className="w-full h-10 px-3 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-primary"
+                  required
+                >
+                  <option value="">-- Choose active work order --</option>
+                  {orders
+                    .filter((o) => o.status === "PLANNED" || o.status === "IN_PROGRESS" || o.status === "DRAFT")
+                    .map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.orderNumber} - {o.productName} ({o.status})
+                      </option>
+                    ))}
+                </select>
+                {orders.filter((o) => o.status === "PLANNED" || o.status === "IN_PROGRESS" || o.status === "DRAFT").length === 0 && (
+                  <p className="text-[11px] text-amber-700 mt-1.5 flex items-center gap-1.5">
+                    <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                    <span>No active work orders found. You can create one from the </span>
+                    <a href="/production" className="underline font-bold text-amber-900 hover:text-amber-950" target="_blank" rel="noreferrer">
+                      Production Page →
+                    </a>
+                  </p>
+                )}
+              </div>
+
+              {/* Target Production Team */}
+              <div>
+                <Label htmlFor="assign-team-select" className="text-xs font-semibold text-slate-700 mb-1 block">
+                  Assigned Production Team <span className="text-red-500">*</span>
+                </Label>
+                <select
+                  id="assign-team-select"
+                  value={selectedTeamIdForAssign}
+                  onChange={(e) => setSelectedTeamIdForAssign(e.target.value)}
+                  className="w-full h-10 px-3 rounded-lg border border-slate-200 bg-white text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-primary"
+                  required
+                >
+                  <option value="">-- Choose production team --</option>
+                  {teams.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.department})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Qty & Bags */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="assign-kg-input" className="text-xs font-semibold text-slate-700 mb-1 block">
+                    Weight to Allocate (KG) <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="assign-kg-input"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max={assignOrderDialog.weightKg}
+                    value={assignKg}
+                    onChange={(e) => setAssignKg(e.target.value)}
+                    className="h-10 text-xs font-mono font-bold"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="assign-bags-input" className="text-xs font-semibold text-slate-700 mb-1 block">
+                    Bags Count
+                  </Label>
+                  <Input
+                    id="assign-bags-input"
+                    type="number"
+                    min="0"
+                    value={assignBags}
+                    onChange={(e) => setAssignBags(e.target.value)}
+                    className="h-10 text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Remarks */}
+              <div>
+                <Label htmlFor="assign-notes-input" className="text-xs font-semibold text-slate-700 mb-1 block">
+                  Allocation Remarks (Optional)
+                </Label>
+                <Input
+                  id="assign-notes-input"
+                  value={assignNotes}
+                  onChange={(e) => setAssignNotes(e.target.value)}
+                  placeholder="e.g. Allocation for Knitting Shift A"
+                  className="h-10 text-xs"
+                />
+              </div>
+
+              <DialogFooter className="gap-2 pt-2">
+                <Button variant="outline" type="button" onClick={() => setAssignOrderDialog(null)} disabled={assignWorkOrderMutation.isPending}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  type="submit"
+                  disabled={assignWorkOrderMutation.isPending || !selectedOrderIdForAssign || !selectedTeamIdForAssign}
+                  className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+                >
+                  {assignWorkOrderMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                  <span>Confirm Work Order Allocation</span>
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Quick Detail Dialog */}
       {selectedDetailItem && (
         <Dialog open={!!selectedDetailItem} onOpenChange={() => setSelectedDetailItem(null)}>
@@ -716,12 +995,22 @@ export default function StockKanbanBoard({
             <div className="space-y-3 my-2 text-xs">
               <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
                 <div>
-                  <span className="text-slate-400 block uppercase tracking-wider text-[10px]">Product</span>
-                  <span className="font-bold text-slate-900 text-sm mt-0.5 block">{selectedDetailItem.title}</span>
+                  <span className="text-slate-400 block uppercase tracking-wider text-[10px]">
+                    {selectedDetailItem.type === "ORDER" ? "Product" : "Yarn Count / Item"}
+                  </span>
+                  <span className="font-bold text-slate-900 text-sm mt-0.5 block">
+                    {(selectedDetailItem.title || "Yarn Stock").replace(/^undefined\s*/i, "Yarn Stock ")}
+                  </span>
                 </div>
                 <div>
                   <span className="text-slate-400 block uppercase tracking-wider text-[10px]">Status</span>
-                  <Badge variant="outline" className="mt-1 font-semibold">{selectedDetailItem.status}</Badge>
+                  {selectedDetailItem.type === "ISSUE" ? (
+                    <Badge variant="outline" className="mt-1 font-semibold text-amber-700 bg-amber-50 border-amber-200">
+                      ISSUED (PENDING ASSIGN)
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="mt-1 font-semibold">{selectedDetailItem.status}</Badge>
+                  )}
                 </div>
                 <div>
                   <span className="text-slate-400 block uppercase tracking-wider text-[10px]">Net Quantity</span>
@@ -731,15 +1020,43 @@ export default function StockKanbanBoard({
                 </div>
                 <div>
                   <span className="text-slate-400 block uppercase tracking-wider text-[10px]">Location</span>
-                  <span className="font-semibold text-slate-800 mt-0.5 block">{selectedDetailItem.locationOrDepartment}</span>
+                  <span className="font-semibold text-slate-800 mt-0.5 block">
+                    {selectedDetailItem.locationOrDepartment || "Floor"}
+                  </span>
                 </div>
               </div>
+
+              {selectedDetailItem.type === "ISSUE" && (
+                <div className="p-3 rounded-lg bg-amber-50/70 border border-amber-200/80 text-amber-900 text-xs flex items-start gap-2">
+                  <Factory className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">Issued from Warehouse to Factory Floor</p>
+                    <p className="text-[11px] text-amber-700 mt-0.5">
+                      This yarn has been issued to the {selectedDetailItem.locationOrDepartment || "production"} floor and is waiting to be linked to a specific work order.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="gap-2">
               <Button variant="outline" onClick={() => setSelectedDetailItem(null)}>
                 Close
               </Button>
+              {selectedDetailItem.type === "ISSUE" && (
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    const item = selectedDetailItem;
+                    setSelectedDetailItem(null);
+                    openAssignOrderModal(item);
+                  }}
+                  className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+                >
+                  <Factory className="h-4 w-4" />
+                  <span>Assign to Work Order</span>
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>
